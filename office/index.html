@@ -210,7 +210,7 @@ function renderOrder(o){
       <div class="grp">
         <div class="grp-h">
           <span class="co">${key === "unresolved" ? "⚠ NO COMPANY RESOLVED"
-            : `${g.entity?.code ?? "?"} · ${(g.entity?.erp ?? "").toUpperCase()}`}</span>
+            : `${g.entity?.display_name ?? "?"} · ${(g.entity?.erp ?? "").toUpperCase()}`}</span>
           <span class="muted mono">${g.lines.length} line${g.lines.length===1?"":"s"}</span>
         </div>
         ${g.lines.map((l) => `
@@ -220,7 +220,7 @@ function renderOrder(o){
               ${l.routing_overridden_by ? `<span class="pill p-neu">overridden</span>` : ""}
             </span>
             ${needsRouting ? `<select data-line="${l.id}">
-              ${ENTITIES.map((e) => `<option value="${e.id}"${e.id === l.billing_entity_id ? " selected" : ""}>${e.code} · ${e.erp}</option>`).join("")}
+              ${ENTITIES.map((e) => `<option value="${e.id}"${e.id === l.billing_entity_id ? " selected" : ""}>${e.display_name} · ${e.erp}</option>`).join("")}
             </select>` : ""}
           </div>`).join("")}
       </div>`).join("")}
@@ -238,7 +238,7 @@ function renderOrder(o){
         const rate = Number(ent?.default_vat_rate ?? 0);
         return `<div class="inv ${done ? "issued" : ""}" data-inv="${v.id}">
           <div class="row" style="justify-content:space-between">
-            <span class="co" style="font-size:12px;font-weight:700">${ent?.code ?? ""} · ${v.erp.toUpperCase()}
+            <span class="co" style="font-size:12px;font-weight:700">${ent?.display_name ?? ""} · ${v.erp.toUpperCase()}
               ${ent?.vat_registered ? `<span class="muted">· VAT ${rate}%</span>` : `<span class="muted">· not VAT registered</span>`}</span>
             ${done ? `<span class="pill p-ok">${v.erp_invoice_no}</span>` : `<span class="pill p-warn">pending</span>`}
           </div>
@@ -271,7 +271,7 @@ function wireOrder(o){
       for (const sel of card.querySelectorAll("[data-line]")) {
         const line = (o.order_lines ?? []).find((l) => l.id === sel.dataset.line);
         if (line && sel.value !== line.billing_entity_id) {
-          const reason = prompt(`Why is "${line.description}" moving to ${ENTITIES.find((e) => e.id === sel.value)?.code}?`);
+          const reason = prompt(`Why is "${line.description}" moving to ${ENTITIES.find((e) => e.id === sel.value)?.display_name}?`);
           if (!reason?.trim()) { accept.disabled = false; return showErr("An override needs a reason — nothing was changed."); }
           overrides.push({ lineId: line.id, billingEntityId: sel.value, reason: reason.trim() });
         }
