@@ -48,6 +48,23 @@ const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
 
 Project `sihvyglufmftrpwogbeq` — FitFuel org, South Asia (Mumbai), chosen for latency from Dubai.
 
+## Reading the ERP's PDFs
+
+The office uploads the PDF it already produces; the app reads the company,
+customer, line items and totals off it. No customer or product master to keep.
+
+- `lib/pdfjs/` — Mozilla pdf.js, vendored (no CDN reachable from Pages)
+- `lib/pdf-text.js` — groups pdf.js fragments into rows, restoring column gaps
+- `lib/parsers.js` — one parser per ERP, each reconciling against the document
+
+A document is only saved when every priced row satisfies quantity x rate =
+amount **and** the rows add up to the total printed on the page. Otherwise the
+office is told why, and nothing is written.
+
+**From Zoho use Download PDF, never Print.** Printing converts the characters to
+vector outlines and there is no text left to read; the app says so plainly rather
+than failing obscurely.
+
 ## Still to build (Phase 1)
 
 - **Office invoice entry form** — currently a stub. Needs invoice number, amount,

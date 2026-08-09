@@ -83,7 +83,22 @@ h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
     <button id="go" style="width:100%">Sign in</button>
   </section>
 
+  <section id="upload" class="card hide">
+    <h2>Add a document</h2>
+    <p class="muted" style="margin:-6px 0 14px">
+      Upload the PDF straight from Zoho, Facts, Focus or Tally. Everything on it is
+      read for you — company, customer, items and totals.
+      <strong>From Zoho use Download PDF, not Print</strong>, or there is no text to read.
+    </p>
+    <div class="row">
+      <button id="pick">Choose PDF</button>
+      <span class="muted" id="pickstate"></span>
+    </div>
+    <div id="review" class="hide" style="margin-top:16px"></div>
+  </section>
+
   <section id="inbox" class="hide"></section>
+  <input type="file" accept="application/pdf" id="docpick" class="hide">
   <input type="file" accept="application/pdf,image/*" id="pdfpick" class="hide">
 </main>
 
@@ -135,6 +150,7 @@ async function uploadDoc(file){
 }
 
 let ENTITIES = [];
+window.ENTITIES = ENTITIES;
 
 // ---- login ----------------------------------------------------------------
 $("go").onclick = async () => {
@@ -148,11 +164,21 @@ $("go").onclick = async () => {
 };
 $("out").onclick = () => { T.token=null; T.user=null; location.reload(); };
 
+// The upload flow lives in a module script; give it the pieces it needs.
+window.ffApi = api;
+window.ffShowErr = showErr;
+window.ffShowOk = showOk;
+window.ffReload = () => loadInbox();
+
 async function boot(){
-  if (!T.token){ $("login").classList.remove("hide"); $("inbox").classList.add("hide"); $("out").classList.add("hide"); return; }
-  $("login").classList.add("hide"); $("out").classList.remove("hide");
+  if (!T.token){
+    $("login").classList.remove("hide"); $("inbox").classList.add("hide");
+    $("upload").classList.add("hide"); $("out").classList.add("hide"); return;
+  }
+  $("login").classList.add("hide"); $("out").classList.remove("hide"); $("upload").classList.remove("hide");
   $("who").textContent = T.user?.name ?? "";
   try { ENTITIES = (await api("/entities")).entities; } catch { ENTITIES = []; }
+  window.ENTITIES = ENTITIES;
   await loadInbox();
 }
 
@@ -232,7 +258,7 @@ function renderOrder(o){
       <div class="row" style="margin-top:14px">
         <select data-all="${o.id}" style="width:auto;min-width:190px">
           <option value="">Set every line to…</option>
-          ${ENTITIES.map((e) => `<option value="${e.id}">${e.display_name} · ${e.erp.toUpperCase()}</option>`).join("")}
+          ${(window.ENTITIES || []).map((e) => `<option value="${e.id}">${e.display_name} · ${e.erp.toUpperCase()}</option>`).join("")}
         </select>
         <button data-accept="${o.id}">Create invoices</button>
       </div>`
@@ -353,6 +379,118 @@ function wireOrder(o){
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 boot();
+</script>
+
+<script type="module">
+// Reading the ERP's PDF. pdf.js is vendored (../lib/pdfjs) because the app is
+// served from GitHub Pages and may not fetch anything from another origin.
+import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs";
+import { extractLines } from "../lib/pdf-text.js";
+import { parseDocument } from "../lib/parsers.js";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs";
+
+const $$ = (id) => document.getElementById(id);
+const aed2 = (n) => Number(n || 0).toFixed(2);
+let pending = null;   // { doc, base64 }
+
+$$("pick").onclick = () => $$("docpick").click();
+
+$$("docpick").onchange = async () => {
+  const file = $$("docpick").files?.[0];
+  if (!file) return;
+  $$("pickstate").textContent = "Reading…";
+  $$("review").classList.add("hide");
+  window.ffShowErr?.("");
+  try {
+    const buf = await file.arrayBuffer();
+    const lines = await extractLines(buf.slice(0), pdfjsLib);
+    const { ok, doc, reason } = parseDocument(lines);
+    if (!ok) { $$("pickstate").textContent = ""; window.ffShowErr?.(reason); return; }
+
+    const b64 = await new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(String(fr.result).split(",")[1]);
+      fr.onerror = () => rej(new Error("Could not read the file."));
+      fr.readAsDataURL(file);
+    });
+    pending = { doc, base64: b64 };
+    $$("pickstate").textContent = file.name;
+    renderReview(doc);
+  } catch (e) {
+    $$("pickstate").textContent = "";
+    window.ffShowErr?.(`Could not read that PDF — ${e.message}`);
+  }
+};
+
+function renderReview(doc) {
+  const el = $$("review");
+  el.classList.remove("hide");
+  const needsCompany = !doc.sellerTrn;
+  const rows = doc.lines.slice(0, 8).map((l) => `
+    <div class="line">
+      <span>${l.description}${l.freeOfCharge ? ` <span class="pill p-neu">free of charge</span>` : ""}</span>
+      <span class="mono">${Number(l.qty)} ${l.rate ? `× ${aed2(l.rate)}` : ""} ${l.amount ? `= ${aed2(l.amount)}` : ""}</span>
+    </div>`).join("");
+
+  el.innerHTML = `
+    <div class="split">
+      <strong>${doc.erp.toUpperCase()} ${doc.docType === "invoice" ? "tax invoice" : "sales order"} ${doc.docNo ?? ""}</strong>
+      — read from the document. Check it before saving.
+    </div>
+    <div class="f3" style="margin-bottom:12px">
+      <div><label>Customer</label><div class="inp" style="border:1px solid var(--line);border-radius:var(--r);padding:10px 12px">${doc.customerName ?? "—"}</div></div>
+      <div><label>Customer TRN</label><div class="mono" style="border:1px solid var(--line);border-radius:var(--r);padding:10px 12px">${doc.customerTrn ?? "—"}</div></div>
+      <div><label>Date</label><div style="border:1px solid var(--line);border-radius:var(--r);padding:10px 12px">${doc.date ?? "—"}</div></div>
+    </div>
+
+    ${needsCompany ? `
+      <label for="pickco">This document names no company — which one issued it?</label>
+      <select id="pickco">
+        <option value="">Choose…</option>
+        ${(window.ENTITIES || []).map((e) => `<option value="${e.id}">${e.display_name} · ${e.erp.toUpperCase()}</option>`).join("")}
+      </select>
+      <div style="height:12px"></div>`
+    : `<div class="muted" style="margin-bottom:12px">Company identified from TRN <span class="mono">${doc.sellerTrn}</span>.</div>`}
+
+    <label>${doc.lines.length} line${doc.lines.length === 1 ? "" : "s"}</label>
+    ${rows}
+    ${doc.lines.length > 8 ? `<div class="muted" style="padding:6px 0">… ${doc.lines.length - 8} more</div>` : ""}
+
+    <div class="row" style="justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+      <span class="muted">Lines add up to <span class="mono">${aed2(doc.linesSum)}</span>, matching the document ✓</span>
+      <strong class="mono">Total AED ${aed2(doc.total)}</strong>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button id="saveDoc">Save to the warehouse queue</button>
+      <button class="sec" id="cancelDoc">Cancel</button>
+    </div>`;
+
+  $$("cancelDoc").onclick = () => {
+    pending = null; el.classList.add("hide");
+    $$("pickstate").textContent = ""; $$("docpick").value = "";
+  };
+
+  $$("saveDoc").onclick = async () => {
+    const btn = $$("saveDoc"); btn.disabled = true; btn.textContent = "Saving…";
+    window.ffShowErr?.(""); window.ffShowOk?.("");
+    try {
+      const billingEntityId = needsCompany ? $$("pickco").value : undefined;
+      if (needsCompany && !billingEntityId) throw new Error("Choose which company issued this document.");
+      const r = await window.ffApi("/office/ingest", {
+        doc: pending.doc, billingEntityId,
+        pdfBase64: pending.base64, contentType: "application/pdf",
+      });
+      window.ffShowOk?.(`${r.docNo} saved for ${r.customer} — ${r.lines} lines.` +
+        (r.documentDiscarded ? " The source file was not stored for this company." : ""));
+      pending = null; el.classList.add("hide");
+      $$("pickstate").textContent = ""; $$("docpick").value = "";
+      await window.ffReload?.();
+    } catch (e) {
+      window.ffShowErr?.(e.message);
+    } finally { btn.disabled = false; btn.textContent = "Save to the warehouse queue"; }
+  };
+}
 </script>
 </body>
 </html>
