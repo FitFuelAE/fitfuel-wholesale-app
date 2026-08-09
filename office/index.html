@@ -59,6 +59,13 @@ h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
 .inv{border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:10px}
 .inv.issued{border-color:var(--ok);background:rgba(52,168,83,.04)}
 .f3{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px}
+/* A 39-line sales order should be fully readable without pushing the totals and
+   the save button off the screen. */
+.linebox{max-height:min(46vh,380px);overflow-y:auto;border:1px solid var(--line);
+  border-radius:var(--r);padding:2px 12px;background:var(--bg)}
+.linebox .line:first-child{padding-top:10px}
+.linebox .line:last-child{padding-bottom:10px}
+.lineno{display:inline-block;min-width:22px;color:var(--subtle);font-family:ui-monospace,Menlo,monospace;font-size:12px}
 .held{background:rgba(239,179,76,.12);border:1px solid var(--warn);border-radius:var(--r);
   padding:13px 15px;margin:12px 0}
 .held strong{color:#8A5D08}
@@ -282,6 +289,7 @@ function renderOrder(o){
             : `${g.entity?.display_name ?? "?"} · ${(g.entity?.erp ?? "").toUpperCase()}`}</span>
           <span class="muted mono">${g.lines.length} line${g.lines.length===1?"":"s"}</span>
         </div>
+        <div class="${g.lines.length > 10 ? "linebox" : ""}" style="border:0;padding:0">
         ${g.lines.map((l) => `
           <div class="line">
             <span>${l.description}
@@ -512,9 +520,9 @@ function renderReview(doc) {
   const el = $$("review");
   el.classList.remove("hide");
   const needsCompany = !doc.sellerTrn;
-  const rows = doc.lines.slice(0, 8).map((l) => `
+  const rows = doc.lines.map((l, i) => `
     <div class="line">
-      <span>${l.description}${l.freeOfCharge ? ` <span class="pill p-neu">free of charge</span>` : ""}</span>
+      <span><span class="lineno">${l.sl ?? i + 1}</span>${l.description}${l.freeOfCharge ? ` <span class="pill p-neu">free of charge</span>` : ""}</span>
       <span class="mono">${Number(l.qty)} ${l.rate ? `× ${aed2(l.rate)}` : ""} ${l.amount ? `= ${aed2(l.amount)}` : ""}</span>
     </div>`).join("");
 
@@ -538,9 +546,8 @@ function renderReview(doc) {
       <div style="height:12px"></div>`
     : `<div class="muted" style="margin-bottom:12px">Company identified from TRN <span class="mono">${doc.sellerTrn}</span>.</div>`}
 
-    <label>${doc.lines.length} line${doc.lines.length === 1 ? "" : "s"}</label>
-    ${rows}
-    ${doc.lines.length > 8 ? `<div class="muted" style="padding:6px 0">… ${doc.lines.length - 8} more</div>` : ""}
+    <label>${doc.lines.length} line${doc.lines.length === 1 ? "" : "s"}${doc.lines.length > 10 ? " — scroll to see them all" : ""}</label>
+    <div class="linebox">${rows}</div>
 
     <div class="row" style="justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
       <span class="muted">Lines add up to <span class="mono">${aed2(doc.linesSum)}</span>, matching the document ✓</span>
