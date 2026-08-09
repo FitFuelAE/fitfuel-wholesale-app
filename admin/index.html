@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#110744">
+<title>FitFuel Wholesale — Admin</title>
+<link rel="manifest" href="admin.webmanifest">
+<link rel="apple-touch-icon" href="../icon-512.png">
+<style>
+:root{
+  --ink-deep:#121723; --subtle:#96A4B6; --slate:#3F4E6D;
+  --violet:#3A34D2; --indigo:#110744; --lime:#D8FD80;
+  --ok:#34A853; --warn:#EFB34C; --bad:#E84545;
+  --bg:#fff; --bg-2:#EEF5F7; --line:#E5E5E5; --r:8px; --r-pill:60px;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--font);background:var(--bg-2);color:var(--ink-deep)}
+header{background:var(--indigo);color:#fff;padding:14px 20px;display:flex;
+  align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:-.3px}
+header .who{font-size:12px;opacity:.75}
+main{padding:20px;max-width:900px;margin:0 auto}
+.card{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:16px}
+label{display:block;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;
+  color:var(--subtle);margin-bottom:6px}
+input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);
+  font-size:15px;font-family:inherit;background:var(--bg);color:var(--ink-deep)}
+button{border:0;border-radius:var(--r-pill);padding:11px 18px;font-size:14px;font-weight:700;
+  font-family:inherit;background:#1E1E1E;color:#fff;cursor:pointer}
+button.sec{background:transparent;color:var(--ink-deep);border:1px solid var(--line)}
+button.sm{padding:7px 13px;font-size:13px}
+button:disabled{opacity:.45}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:var(--r-pill)}
+.p-ok{background:rgba(52,168,83,.12);color:var(--ok)}
+.p-off{background:#F4F5F5;color:var(--subtle);border:1px solid var(--line)}
+.p-acc{background:rgba(58,52,210,.10);color:var(--violet)}
+.p-bad{background:rgba(232,69,69,.10);color:var(--bad)}
+.muted{color:var(--subtle);font-size:13px}
+.mono{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.err{background:rgba(232,69,69,.10);color:var(--bad);padding:10px 12px;border-radius:var(--r);
+  font-size:13px;margin-bottom:14px}
+.okmsg{background:rgba(52,168,83,.10);color:var(--ok);padding:10px 12px;border-radius:var(--r);
+  font-size:13px;margin-bottom:14px}
+.hide{display:none}
+h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
+.tabs{display:flex;gap:8px;margin-bottom:18px}
+.tab{background:transparent;color:var(--subtle);border:1px solid var(--line)}
+.tab.on{background:var(--indigo);color:#fff;border-color:var(--indigo)}
+.person{border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:10px}
+.person.off{opacity:.55}
+.person.master{border-color:var(--violet);background:rgba(58,52,210,.03)}
+.caps{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.cap{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r-pill);
+  padding:6px 13px;font-size:13px;cursor:pointer;user-select:none;background:var(--bg)}
+.cap input{width:16px;height:16px;flex:none;margin:0}
+.cap.on{border-color:var(--violet);background:rgba(58,52,210,.07);font-weight:700}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:560px){.f2{grid-template-columns:1fr}}
+.stat{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px dashed #F0F1F3;font-size:14px}
+.stat:last-child{border-bottom:0}
+.big{font-size:26px;font-weight:900;letter-spacing:-.9px}
+</style>
+</head>
+<body>
+
+<header>
+  <div><h1>Admin</h1><div class="who" id="who"></div></div>
+  <button class="sec sm hide" id="out" style="color:#fff;border-color:rgba(255,255,255,.3)">Sign out</button>
+</header>
+
+<main>
+  <div id="err" class="err hide"></div>
+  <div id="ok" class="okmsg hide"></div>
+
+  <section id="login" class="card" style="max-width:380px">
+    <label for="u">Username</label>
+    <input id="u" autocapitalize="none" autocorrect="off">
+    <div style="height:10px"></div>
+    <label for="p">Password</label>
+    <input id="p" type="password">
+    <div style="height:14px"></div>
+    <button id="go" style="width:100%">Sign in</button>
+  </section>
+
+  <nav id="tabs" class="tabs hide">
+    <button class="tab on" data-tab="people">People &amp; rights</button>
+    <button class="tab" data-tab="board">Today</button>
+  </nav>
+
+  <section id="people" class="hide"></section>
+  <section id="board" class="hide"></section>
+</main>
+
+<script>
+const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
+
+const $ = (id) => document.getElementById(id);
+const T = {
+  get token(){ return localStorage.getItem("ff_wh_admin_token"); },
+  set token(v){ v ? localStorage.setItem("ff_wh_admin_token", v) : localStorage.removeItem("ff_wh_admin_token"); },
+  get user(){ try { return JSON.parse(localStorage.getItem("ff_wh_admin_user")||"null"); } catch { return null; } },
+  set user(v){ v ? localStorage.setItem("ff_wh_admin_user", JSON.stringify(v)) : localStorage.removeItem("ff_wh_admin_user"); },
+};
+const showErr = (m) => { const e=$("err"); e.textContent=m||""; e.classList.toggle("hide", !m); if(m) window.scrollTo(0,0); };
+const showOk  = (m) => { const e=$("ok");  e.textContent=m||""; e.classList.toggle("hide", !m); };
+const aed = (n) => Number(n || 0).toFixed(2);
+
+async function api(path, body){
+  const res = await fetch(API + path, {
+    method: body ? "POST" : "GET",
+    headers: { "Content-Type":"application/json", ...(T.token ? { Authorization:"Bearer "+T.token } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || `request failed (${res.status})`);
+  return d;
+}
+
+// Plain-English names for the switches. The API's keys are the source of truth;
+// anything it returns that isn't listed here still renders, using its raw key.
+const CAP_LABELS = {
+  "office":          "Office — orders & invoices",
+  "warehouse":       "Warehouse — picking & dispatch",
+  "money.receive":   "Receive money",
+  "money.remit":     "Pass money on",
+  "staff.manage":    "Manage people & rights",
+  "entities.manage": "Manage companies",
+  "board":           "See the daily board",
+};
+const ROLE_HINT = {
+  admin:     "Rights are switched on individually below.",
+  office:    "Office section only.",
+  warehouse: "Warehouse and money handling.",
+  driver:    "Their own deliveries only.",
+  sales:     "Order entry only.",
+};
+
+// ---- login ----------------------------------------------------------------
+$("go").onclick = async () => {
+  showErr(""); $("go").disabled = true;
+  try {
+    const r = await api("/login", { username:$("u").value.trim().toLowerCase(), password:$("p").value });
+    if (!r.user.capabilities?.includes("staff.manage") && !r.user.capabilities?.includes("board")) {
+      throw new Error("This account has no admin rights.");
+    }
+    T.token = r.token; T.user = r.user; $("p").value = "";
+    await boot();
+  } catch(e){ showErr(e.message); } finally { $("go").disabled = false; }
+};
+$("out").onclick = () => { T.token=null; T.user=null; location.reload(); };
+
+async function boot(){
+  if (!T.token){
+    $("login").classList.remove("hide"); $("tabs").classList.add("hide");
+    $("people").classList.add("hide"); $("board").classList.add("hide"); $("out").classList.add("hide");
+    return;
+  }
+  $("login").classList.add("hide"); $("out").classList.remove("hide"); $("tabs").classList.remove("hide");
+  $("who").textContent = `${T.user?.name ?? ""}${T.user?.master ? " · master" : ""}`;
+  // Hide tabs this account can't use rather than letting it click into a 403.
+  const caps = T.user?.capabilities ?? [];
+  document.querySelector('[data-tab="people"]').classList.toggle("hide", !caps.includes("staff.manage"));
+  document.querySelector('[data-tab="board"]').classList.toggle("hide", !caps.includes("board"));
+  caps.includes("staff.manage") ? await loadPeople() : await loadBoard(true);
+}
+
+document.querySelectorAll(".tab").forEach((b) => b.onclick = async () => {
+  document.querySelectorAll(".tab").forEach((x) => x.classList.remove("on"));
+  b.classList.add("on"); showErr(""); showOk("");
+  const board = b.dataset.tab === "board";
+  $("people").classList.toggle("hide", board);
+  $("board").classList.toggle("hide", !board);
+  board ? await loadBoard() : await loadPeople();
+});
+
+// ---- people & rights -------------------------------------------------------
+async function loadPeople(){
+  const el = $("people"); el.classList.remove("hide");
+  el.innerHTML = `<p class="muted">Loading…</p>`;
+  try {
+    const { staff, capabilities } = await api("/admin/staff");
+
+    el.innerHTML = `
+      <div class="card">
+        <h2>Add someone</h2>
+        <div class="f2">
+          <div><label for="nu">Username</label><input id="nu" autocapitalize="none" placeholder="lowercase, no spaces"></div>
+          <div><label for="nn">Full name</label><input id="nn"></div>
+          <div><label for="nr">Role</label>
+            <select id="nr">
+              <option value="driver">Driver</option>
+              <option value="warehouse">Warehouse</option>
+              <option value="office">Office</option>
+              <option value="sales">Salesman</option>
+              <option value="admin">Admin (rights you choose)</option>
+            </select>
+          </div>
+          <div><label for="ns"><span id="nsl">PIN</span></label><input id="ns" placeholder="4-6 digits"></div>
+        </div>
+        <div class="muted" id="nhint" style="margin:10px 0">${ROLE_HINT.driver}</div>
+        <button id="add">Add</button>
+      </div>
+
+      <h2>${staff.length} ${staff.length === 1 ? "person" : "people"}</h2>
+      ${staff.map((p) => renderPerson(p, capabilities)).join("")}`;
+
+    // PIN for drivers, password for everyone else — mirrors what the API enforces.
+    const syncRole = () => {
+      const r = $("nr").value;
+      $("nsl").textContent = r === "driver" ? "PIN" : "Password";
+      $("ns").placeholder = r === "driver" ? "4-6 digits" : "at least 6 characters";
+      $("ns").inputMode = r === "driver" ? "numeric" : "text";
+      $("nhint").textContent = ROLE_HINT[r];
+    };
+    $("nr").onchange = syncRole; syncRole();
+
+    $("add").onclick = async () => {
+      showErr(""); showOk(""); $("add").disabled = true;
+      try {
+        await api("/admin/staff", {
+          username: $("nu").value.trim().toLowerCase(), name: $("nn").value.trim(),
+          role: $("nr").value, secret: $("ns").value, permissions: [],
+        });
+        showOk(`${$("nu").value.trim().toLowerCase()} added.`);
+        await loadPeople();
+      } catch(e){ showErr(e.message); } finally { $("add").disabled = false; }
+    };
+
+    wirePeople(capabilities);
+  } catch(e){ showErr(e.message); el.innerHTML = ""; }
+}
+
+function renderPerson(p, capabilities){
+  const isAdmin = p.role === "admin" && !p.is_master;
+  return `<div class="person ${p.active ? "" : "off"} ${p.is_master ? "master" : ""}" data-user="${p.username}">
+    <div class="row" style="justify-content:space-between">
+      <div>
+        <div style="font-weight:700">${p.name}
+          <span class="muted mono">· ${p.username}</span></div>
+        <div class="muted">${p.role}${p.is_master ? " · master" : ""} — ${ROLE_HINT[p.role] ?? ""}</div>
+      </div>
+      <div class="row">
+        <span class="pill ${p.active ? "p-ok" : "p-off"}">${p.active ? "active" : "disabled"}</span>
+        ${p.is_master ? `<span class="pill p-acc">all rights</span>` : ""}
+      </div>
+    </div>
+
+    ${isAdmin ? `
+      <div class="caps">
+        ${capabilities.map((c) => `
+          <label class="cap ${p.permissions.includes(c) ? "on" : ""}">
+            <input type="checkbox" data-cap="${c}" data-for="${p.username}"
+                   ${p.permissions.includes(c) ? "checked" : ""}>
+            ${CAP_LABELS[c] ?? c}
+          </label>`).join("")}
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="sm" data-save="${p.username}">Save rights</button>
+        <span class="muted" data-state="${p.username}"></span>
+      </div>` : ""}
+
+    <div class="row" style="margin-top:12px">
+      <input data-secret="${p.username}" placeholder="${p.role === "driver" ? "new PIN" : "new password"}"
+             style="width:auto;min-width:170px" ${p.role === "driver" ? 'inputmode="numeric"' : ""}>
+      <button class="sec sm" data-reset="${p.username}">Reset ${p.role === "driver" ? "PIN" : "password"}</button>
+      ${p.is_master ? "" : `<button class="sec sm" data-toggle="${p.username}" data-active="${p.active}">
+        ${p.active ? "Disable" : "Reinstate"}</button>`}
+    </div>
+  </div>`;
+}
+
+function wirePeople(){
+  document.querySelectorAll("[data-cap]").forEach((cb) => cb.onchange = () =>
+    cb.closest(".cap").classList.toggle("on", cb.checked));
+
+  document.querySelectorAll("[data-save]").forEach((b) => b.onclick = async () => {
+    const u = b.dataset.save;
+    const state = document.querySelector(`[data-state="${u}"]`);
+    b.disabled = true; state.textContent = "Saving…"; showErr(""); showOk("");
+    try {
+      const permissions = [...document.querySelectorAll(`[data-for="${u}"]:checked`)].map((i) => i.dataset.cap);
+      await api("/admin/staff/permissions", { username: u, permissions });
+      state.textContent = "saved";
+      showOk(`${u}: rights updated. They take effect next time ${u} signs in.`);
+    } catch(e){ showErr(e.message); state.textContent = ""; } finally { b.disabled = false; }
+  });
+
+  document.querySelectorAll("[data-reset]").forEach((b) => b.onclick = async () => {
+    const u = b.dataset.reset;
+    const val = document.querySelector(`[data-secret="${u}"]`).value;
+    showErr(""); showOk("");
+    if (!val) return showErr("Type the new PIN or password first.");
+    b.disabled = true;
+    try {
+      await api("/admin/staff/credential", { username: u, secret: val });
+      document.querySelector(`[data-secret="${u}"]`).value = "";
+      showOk(`${u}: credential reset.`);
+    } catch(e){ showErr(e.message); } finally { b.disabled = false; }
+  });
+
+  document.querySelectorAll("[data-toggle]").forEach((b) => b.onclick = async () => {
+    const u = b.dataset.toggle;
+    b.disabled = true; showErr(""); showOk("");
+    try {
+      await api("/admin/staff/toggle", { username: u, active: b.dataset.active !== "true" });
+      await loadPeople();
+    } catch(e){ showErr(e.message); b.disabled = false; }
+  });
+}
+
+// ---- today -----------------------------------------------------------------
+async function loadBoard(soloTab){
+  const el = $("board"); el.classList.remove("hide");
+  if (soloTab) { $("people").classList.add("hide");
+    document.querySelectorAll(".tab").forEach((x) => x.classList.remove("on"));
+    document.querySelector('[data-tab="board"]')?.classList.add("on"); }
+  el.innerHTML = `<p class="muted">Loading…</p>`;
+  try {
+    const b = await api("/admin/board");
+    const stages = Object.entries(b.openByStatus);
+    el.innerHTML = `
+      <div class="card">
+        <label>Collected today</label>
+        <div class="big">AED ${aed(b.collectedToday)}</div>
+      </div>
+
+      <div class="card">
+        <h2>Open orders</h2>
+        ${stages.length
+          ? stages.map(([k, n]) => `<div class="stat"><span>${k.replace(/_/g," ")}</span><span class="mono">${n}</span></div>`).join("")
+          : `<p class="muted">Nothing open.</p>`}
+      </div>
+
+      <div class="card">
+        <h2>Disputed handovers</h2>
+        ${b.disputed.length
+          ? b.disputed.map((d) => `<div class="stat">
+              <span>${d.from_user} → ${d.to_user}</span>
+              <span class="mono">declared ${aed(d.total_amount)} · counted ${aed(d.counted_amount)}</span>
+            </div>`).join("")
+          : `<p class="muted">None. Every handover has reconciled.</p>`}
+      </div>`;
+  } catch(e){ showErr(e.message); el.innerHTML = ""; }
+}
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+boot();
+</script>
+</body>
+</html>

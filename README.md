@@ -22,6 +22,7 @@ edge function cross-origin.
 | `/driver/` | drivers | **WS Driver** |
 | `/warehouse/` | storekeeper, pickers | **WS Store** |
 | `/office/` | office staff | **WS Office** |
+| `/admin/` | master, admins | **WS Admin** |
 
 Each app lives in its own folder with its own manifest and service worker, so they
 have **separate PWA scopes** and can all be installed to one phone independently —

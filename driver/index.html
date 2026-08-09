@@ -83,8 +83,9 @@ h2{font-size:15px;margin:18px 0 8px;letter-spacing:-.3px}
     <label for="u">Username</label>
     <input id="u" autocapitalize="none" autocorrect="off" autocomplete="username">
     <div style="height:10px"></div>
-    <label for="p">Password</label>
-    <input id="p" type="password" autocomplete="current-password">
+    <label for="p">PIN</label>
+    <input id="p" type="password" inputmode="numeric" pattern="[0-9]*"
+           autocomplete="current-password" maxlength="6">
     <div style="height:14px"></div>
     <button id="go">Sign in</button>
   </section>
