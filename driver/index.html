@@ -10,10 +10,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 :root{
-  --ink:#1E1E1E; --ink-deep:#121723; --slate:#3F4E6D; --subtle:#96A4B6;
+  --ink:#1E1E1E; --ink-deep:#121723; --subtle:#96A4B6;
   --violet:#3A34D2; --lime:#D8FD80; --indigo:#110744;
   --ok:#34A853; --warn:#EFB34C; --bad:#E84545;
-  --bg:#fff; --bg-2:#EEF5F7; --card:#FAFAFB; --line:#E5E5E5;
+  --bg:#fff; --bg-2:#EEF5F7; --line:#E5E5E5;
   --r:8px; --r-pill:60px;
   --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
 }
@@ -33,12 +33,12 @@ input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);
 button{border:0;border-radius:var(--r-pill);padding:13px 18px;font-size:15px;font-weight:700;
   font-family:inherit;background:var(--ink);color:#fff;width:100%;cursor:pointer}
 button.sec{background:transparent;color:var(--ink-deep);border:1px solid var(--line)}
+button.sm{width:auto;padding:8px 14px;font-size:13px}
 button:disabled{opacity:.45}
 .row{display:flex;gap:8px}
 .row>*{flex:1}
 .pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:var(--r-pill)}
 .p-ok{background:rgba(52,168,83,.12);color:var(--ok)}
-.p-warn{background:rgba(239,179,76,.16);color:#9A6B10}
 .p-todo{background:rgba(58,52,210,.10);color:var(--violet)}
 .drop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;cursor:pointer}
 .drop .nm{font-weight:700;font-size:15px}
@@ -46,29 +46,39 @@ button:disabled{opacity:.45}
 .muted{color:var(--subtle);font-size:13px}
 .err{background:rgba(232,69,69,.10);color:var(--bad);padding:10px 12px;border-radius:var(--r);
   font-size:13px;margin-bottom:12px}
+.okmsg{background:rgba(52,168,83,.10);color:var(--ok);padding:10px 12px;border-radius:var(--r);
+  font-size:13px;margin-bottom:12px}
 .inv{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;
   border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px}
+.inv.done{border-color:var(--ok);background:rgba(52,168,83,.05)}
 .inv .no{font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:700}
 canvas#sig{width:100%;height:150px;border:1px dashed var(--line);border-radius:var(--r);
   background:var(--bg);touch-action:none;display:block}
 .hide{display:none}
 h2{font-size:15px;margin:18px 0 8px;letter-spacing:-.3px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{flex:0 0 auto;padding:9px 15px;border-radius:var(--r-pill);border:1px solid var(--line);
+  background:var(--bg);font-size:13px;font-weight:700;cursor:pointer;color:var(--ink-deep)}
+.chip.on{background:var(--indigo);color:#fff;border-color:var(--indigo)}
+.alloc{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.alloc .no{flex:1;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.alloc input{width:104px;flex:none;text-align:right;font-family:ui-monospace,Menlo,monospace}
+.tot{display:flex;justify-content:space-between;font-size:12px;padding-top:8px;
+  border-top:1px dashed var(--line);margin-top:4px}
+.tot.bad{color:var(--bad);font-weight:700}
 </style>
 </head>
 <body>
 
 <header>
-  <div>
-    <h1>Deliveries</h1>
-    <div class="who" id="who"></div>
-  </div>
-  <button class="sec hide" id="out" style="width:auto;padding:8px 14px;font-size:13px;color:#fff;border-color:rgba(255,255,255,.3)">Sign out</button>
+  <div><h1>Deliveries</h1><div class="who" id="who"></div></div>
+  <button class="sec sm hide" id="out" style="color:#fff;border-color:rgba(255,255,255,.3)">Sign out</button>
 </header>
 
 <main>
   <div id="err" class="err hide"></div>
+  <div id="ok" class="okmsg hide"></div>
 
-  <!-- login -->
   <section id="login" class="card">
     <label for="u">Username</label>
     <input id="u" autocapitalize="none" autocorrect="off" autocomplete="username">
@@ -79,17 +89,12 @@ h2{font-size:15px;margin:18px 0 8px;letter-spacing:-.3px}
     <button id="go">Sign in</button>
   </section>
 
-  <!-- run list -->
   <section id="run" class="hide"></section>
-
-  <!-- drop detail -->
   <section id="detail" class="hide"></section>
 </main>
 
 <script>
-// ---------------------------------------------------------------------------
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-// ---------------------------------------------------------------------------
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -98,16 +103,13 @@ const store = {
   get user(){ try { return JSON.parse(localStorage.getItem("ff_wh_user")||"null"); } catch { return null; } },
   set user(v){ v ? localStorage.setItem("ff_wh_user", JSON.stringify(v)) : localStorage.removeItem("ff_wh_user"); },
 };
-
-function showErr(msg){ const e=$("err"); e.textContent=msg; e.classList.toggle("hide", !msg); }
+const showErr = (m) => { const e=$("err"); e.textContent=m||""; e.classList.toggle("hide", !m); if(m) window.scrollTo(0,0); };
+const showOk  = (m) => { const e=$("ok");  e.textContent=m||""; e.classList.toggle("hide", !m); };
 
 async function api(path, body){
   const res = await fetch(API + path, {
     method: body ? "POST" : "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...(store.token ? { Authorization: "Bearer " + store.token } : {}),
-    },
+    headers: { "Content-Type":"application/json", ...(store.token ? { Authorization:"Bearer "+store.token } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
@@ -115,23 +117,61 @@ async function api(path, body){
   return data;
 }
 
+// ---------------------------------------------------------------------------
+// Image pipeline — downscale on the phone, then upload.
+//
+// A stamped A4 invoice has to stay legible, so the long edge is capped at
+// 1600px and JPEG quality steps down until the file is under ~150 kB. That
+// keeps a year of proofs well inside the storage budget without making the
+// photo useless for settling a customer query.
+// ---------------------------------------------------------------------------
+async function downscale(file, maxDim = 1600, targetKB = 150){
+  const img = await createImageBitmap(file);
+  const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+  const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  cv.getContext("2d").drawImage(img, 0, 0, w, h);
+  img.close?.();
+
+  let q = 0.82;
+  let blob = await new Promise((r) => cv.toBlob(r, "image/jpeg", q));
+  while (blob && blob.size > targetKB * 1024 && q > 0.4) {
+    q -= 0.12;
+    blob = await new Promise((r) => cv.toBlob(r, "image/jpeg", q));
+  }
+  if (!blob) throw new Error("Could not process that photo — try again.");
+  return blob;
+}
+
+const blobToBase64 = (blob) => new Promise((res, rej) => {
+  const fr = new FileReader();
+  fr.onload = () => res(String(fr.result).split(",")[1]);
+  fr.onerror = () => rej(new Error("Could not read the photo."));
+  fr.readAsDataURL(blob);
+});
+
+async function upload(blob, kind){
+  const base64 = await blobToBase64(blob);
+  const { path } = await api("/upload", { kind, contentType: blob.type || "image/jpeg", base64 });
+  return path;
+}
+
+const money = (n) => Number(n || 0).toFixed(2);
+
 // ---- login ----------------------------------------------------------------
 $("go").onclick = async () => {
-  showErr("");
-  $("go").disabled = true;
+  showErr(""); $("go").disabled = true;
   try {
     const r = await api("/login", { username: $("u").value.trim().toLowerCase(), password: $("p").value });
     if (r.user.role !== "driver") throw new Error("This app is for drivers. Use the office or warehouse app.");
-    store.token = r.token; store.user = r.user;
-    $("p").value = "";
+    store.token = r.token; store.user = r.user; $("p").value = "";
     await boot();
   } catch (e) { showErr(e.message); }
   finally { $("go").disabled = false; }
 };
-
 $("out").onclick = () => { store.token = null; store.user = null; location.reload(); };
 
-// ---- run list -------------------------------------------------------------
 async function boot(){
   if (!store.token) {
     $("login").classList.remove("hide");
@@ -139,10 +179,11 @@ async function boot(){
     return;
   }
   $("login").classList.add("hide"); $("out").classList.remove("hide");
-  $("who").textContent = store.user ? `${store.user.name}` : "";
+  $("who").textContent = store.user?.name ?? "";
   await loadRun();
 }
 
+// ---- run list -------------------------------------------------------------
 async function loadRun(){
   $("detail").classList.add("hide");
   const el = $("run"); el.classList.remove("hide");
@@ -167,18 +208,24 @@ async function loadRun(){
 }
 
 // ---- drop detail ----------------------------------------------------------
-// The invoice checklist is the point: one stamped photo per invoice, and the API
-// refuses to close the drop while any is missing.
-const proofs = new Map();   // invoiceId -> photoPath (set after upload)
+const proofs = new Map();          // invoiceId -> uploaded storage path
+let chequePath = null;
+let method = "cash";
 
 function openDrop(d){
-  proofs.clear();
-  const o = d.orders, c = o.customers, invoices = o.invoices || [];
+  proofs.clear(); chequePath = null; method = "cash"; signatureDrawn = false;
+  showErr(""); showOk("");
+
+  const o = d.orders, c = o.customers;
+  const invoices = (o.invoices || []).map((v) => ({ ...v, amount: Number(v.amount ?? 0) }));
+  const total = invoices.reduce((t, v) => t + v.amount, 0);
+
   $("run").classList.add("hide");
   const el = $("detail"); el.classList.remove("hide");
 
   el.innerHTML = `
     <button class="sec" id="back" style="margin-bottom:12px">← Back to run</button>
+
     <div class="card">
       <label>Delivering to</label>
       <div style="font-weight:700;font-size:16px">${c?.name ?? "—"}</div>
@@ -186,23 +233,22 @@ function openDrop(d){
     </div>
 
     <div class="card">
-      <label>Invoices on this drop — every one needs a stamped photo</label>
+      <label>Invoices — each needs a photo of the stamped copy</label>
       <div id="invs">${invoices.map((v) => `
         <div class="inv" data-inv="${v.id}">
           <div>
-            <div class="no">${v.erp_invoice_no ?? "(no number yet)"}</div>
-            <div class="muted">${v.erp} · AED ${Number(v.amount ?? 0).toFixed(2)}</div>
+            <div class="no">${v.erp_invoice_no ?? "(no number)"}</div>
+            <div class="muted shot-state">${v.erp} · AED ${money(v.amount)}</div>
           </div>
-          <button class="sec shoot" data-inv="${v.id}" style="width:auto;padding:8px 14px;font-size:13px">Photo</button>
+          <button class="sec sm shoot" data-inv="${v.id}">Photo</button>
         </div>`).join("")}</div>
-      <input type="file" accept="image/*" capture="environment" id="cam" class="hide">
     </div>
 
     <div class="card">
       <label>Customer signature</label>
       <canvas id="sig"></canvas>
       <div style="height:8px"></div>
-      <button class="sec" id="clearsig">Clear signature</button>
+      <button class="sec sm" id="clearsig">Clear</button>
     </div>
 
     <div class="card">
@@ -211,56 +257,189 @@ function openDrop(d){
     </div>
 
     <div class="card">
-      <label>Outcome</label>
-      <div class="row">
-        <button id="deliver">Delivered</button>
-        <button class="sec" id="partial">Short</button>
+      <label>Payment collected</label>
+      <div class="chips" id="methods">
+        ${["cash","cheque","pdc","none"].map((m) =>
+          `<button type="button" class="chip${m==="cash"?" on":""}" data-m="${m}">${m === "pdc" ? "PDC" : m[0].toUpperCase()+m.slice(1)}</button>`).join("")}
       </div>
+
+      <div id="paybox" style="margin-top:12px">
+        <label for="amt">Amount received (AED)</label>
+        <input id="amt" type="number" inputmode="decimal" step="0.01" value="${money(total)}">
+
+        <div id="chequebox" class="hide" style="margin-top:10px">
+          <div class="row">
+            <div><label for="cno">Cheque no.</label><input id="cno"></div>
+            <div><label for="cdate">Date</label><input id="cdate" type="date"></div>
+          </div>
+          <div style="height:8px"></div>
+          <label for="cbank">Bank</label><input id="cbank">
+          <div style="height:8px"></div>
+          <button class="sec sm" id="cshot">Photo of cheque</button>
+          <span class="muted" id="cshot-state" style="margin-left:8px"></span>
+        </div>
+
+        <div style="margin-top:14px">
+          <label>Split across the invoices</label>
+          <div id="allocs">${invoices.map((v) => `
+            <div class="alloc" data-alloc="${v.id}">
+              <span class="no">${v.erp_invoice_no ?? v.erp}</span>
+              <input type="number" inputmode="decimal" step="0.01" data-amt="${v.id}">
+            </div>`).join("")}</div>
+          <div class="tot" id="allocTot"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <button id="complete">Complete drop</button>
       <div style="height:8px"></div>
       <div class="row">
         <button class="sec" id="refused">Refused</button>
         <button class="sec" id="resched">Reschedule</button>
       </div>
-    </div>`;
+    </div>
+
+    <input type="file" accept="image/*" capture="environment" id="cam" class="hide">`;
 
   $("back").onclick = loadRun;
   initSignature();
+  allocatePro(invoices, total);
 
-  // TODO Phase 1: downscale to ~150 kB and upload to the wholesale-docs bucket,
-  // then store the returned path. Mirrors the delivery app's proof upload.
-  el.querySelectorAll(".shoot").forEach((b) => b.onclick = () => {
-    const invId = b.dataset.inv;
-    const cam = $("cam");
+  // ---- photo capture ----
+  const cam = $("cam");
+  const capture = (onDone, btn, stateEl, kind) => {
+    cam.value = "";
     cam.onchange = async () => {
-      if (!cam.files?.[0]) return;
-      proofs.set(invId, `PENDING_UPLOAD/${invId}`);   // placeholder until upload lands
-      b.textContent = "✓ Taken";
-      b.classList.remove("sec");
+      const f = cam.files?.[0]; if (!f) return;
+      const was = btn.textContent;
+      btn.textContent = "Working…"; btn.disabled = true; showErr("");
+      try {
+        const blob = await downscale(f);
+        const p = await upload(blob, kind);
+        onDone(p);
+        btn.textContent = "✓ Retake";
+        if (stateEl) stateEl.textContent = `${Math.round(blob.size/1024)} kB uploaded`;
+      } catch (e) {
+        showErr(e.message); btn.textContent = was;
+      } finally { btn.disabled = false; }
     };
     cam.click();
+  };
+
+  el.querySelectorAll(".shoot").forEach((b) => b.onclick = () => {
+    const invId = b.dataset.inv;
+    const row = el.querySelector(`.inv[data-inv="${invId}"]`);
+    capture((p) => { proofs.set(invId, p); row.classList.add("done"); },
+            b, row.querySelector(".shot-state"), "proof");
   });
 
-  const send = (status) => async () => {
-    showErr("");
-    try {
-      const pos = await new Promise((res) =>
-        navigator.geolocation
-          ? navigator.geolocation.getCurrentPosition((p) => res(p), () => res(null), { timeout: 5000 })
-          : res(null));
-      await api("/driver/deliver", {
-        deliveryId: d.id, status,
-        signaturePath: signatureDrawn ? "PENDING_UPLOAD/signature" : null,
-        proofs: [...proofs.entries()].map(([invoiceId, photoPath]) => ({ invoiceId, photoPath })),
-        lpoReference: $("lpo").value.trim() || null,
-        lat: pos?.coords.latitude, lng: pos?.coords.longitude, accuracy: pos?.coords.accuracy,
+  $("cshot").onclick = () => capture((p) => { chequePath = p; }, $("cshot"), $("cshot-state"), "cheque");
+
+  // ---- payment method ----
+  el.querySelectorAll("#methods .chip").forEach((b) => b.onclick = () => {
+    el.querySelectorAll("#methods .chip").forEach((x) => x.classList.remove("on"));
+    b.classList.add("on"); method = b.dataset.m;
+    $("paybox").classList.toggle("hide", method === "none");
+    $("chequebox").classList.toggle("hide", !(method === "cheque" || method === "pdc"));
+  });
+
+  // ---- allocation keeps itself honest ----
+  $("amt").oninput = () => allocatePro(invoices, Number($("amt").value));
+  el.querySelectorAll("[data-amt]").forEach((i) => i.oninput = checkAllocTotal);
+
+  $("complete").onclick = () => complete(d, invoices, "delivered");
+  $("refused").onclick  = () => complete(d, invoices, "refused");
+  $("resched").onclick  = () => complete(d, invoices, "rescheduled");
+}
+
+// Pro-rata by invoice amount, remainder onto the largest — mirrors the server,
+// so what the driver sees is what gets written.
+function allocatePro(invoices, received){
+  const total = invoices.reduce((t, v) => t + v.amount, 0);
+  const cents = Math.round((received || 0) * 100);
+  if (total > 0) {
+    const parts = invoices.map((v) => Math.floor((cents * v.amount) / total));
+    const diff = cents - parts.reduce((a, b) => a + b, 0);
+    if (diff) {
+      let big = 0;
+      invoices.forEach((v, i) => { if (v.amount > invoices[big].amount) big = i; });
+      parts[big] += diff;
+    }
+    invoices.forEach((v, i) => {
+      const input = document.querySelector(`[data-amt="${v.id}"]`);
+      if (input) input.value = (parts[i] / 100).toFixed(2);
+    });
+  }
+  checkAllocTotal();
+}
+
+function checkAllocTotal(){
+  const inputs = [...document.querySelectorAll("[data-amt]")];
+  const box = $("allocTot"); if (!box) return true;
+  const sum = inputs.reduce((t, i) => t + Number(i.value || 0), 0);
+  const want = Number($("amt")?.value || 0);
+  const off = Math.abs(sum - want) > 0.01;
+  box.className = "tot" + (off ? " bad" : "");
+  box.innerHTML = `<span>Allocated</span><span>AED ${money(sum)}${off ? ` — must equal ${money(want)}` : " ✓"}</span>`;
+  return !off;
+}
+
+// ---- submit ---------------------------------------------------------------
+async function complete(d, invoices, status){
+  showErr(""); showOk("");
+  const btn = $("complete");
+  const original = btn.textContent;
+  btn.disabled = true;
+  try {
+    if (status === "delivered") {
+      const missing = invoices.filter((v) => !proofs.has(v.id));
+      if (missing.length) throw new Error(`${missing.length} invoice${missing.length>1?"s":""} still need a photo.`);
+      if (!signatureDrawn) throw new Error("Customer signature required.");
+      if (method !== "none" && !checkAllocTotal()) throw new Error("The split must add up to the amount received.");
+    }
+
+    let signaturePath = null;
+    if (status === "delivered") {
+      btn.textContent = "Uploading…";
+      const sigBlob = await new Promise((r) => $("sig").toBlob(r, "image/jpeg", 0.7));
+      signaturePath = await upload(sigBlob, "signature");
+    }
+
+    const pos = await new Promise((res) =>
+      navigator.geolocation
+        ? navigator.geolocation.getCurrentPosition((p) => res(p), () => res(null), { timeout: 5000 })
+        : res(null));
+
+    btn.textContent = "Saving…";
+    await api("/driver/deliver", {
+      deliveryId: d.id, status, signaturePath,
+      proofs: [...proofs.entries()].map(([invoiceId, photoPath]) => ({ invoiceId, photoPath })),
+      lpoReference: $("lpo").value.trim() || null,
+      lat: pos?.coords.latitude, lng: pos?.coords.longitude, accuracy: pos?.coords.accuracy,
+    });
+
+    if (status === "delivered" && method !== "none") {
+      const amount = Number($("amt").value);
+      await api("/driver/collect", {
+        deliveryId: d.id, method, amount,
+        allocations: [...document.querySelectorAll("[data-amt]")]
+          .map((i) => ({ invoiceId: i.dataset.amt, amount: Number(i.value) })),
+        chequeNo: $("cno")?.value.trim() || null,
+        chequeBank: $("cbank")?.value.trim() || null,
+        chequeDate: $("cdate")?.value || null,
+        photoPath: chequePath,
       });
-      await loadRun();
-    } catch (e) { showErr(e.message); }
-  };
-  $("deliver").onclick = send("delivered");
-  $("partial").onclick  = send("partial");
-  $("refused").onclick  = send("refused");
-  $("resched").onclick  = send("rescheduled");
+      showOk(`Drop completed · AED ${money(amount)} recorded as ${method}`);
+    } else {
+      showOk(`Drop marked ${status}.`);
+    }
+    await loadRun();
+  } catch (e) {
+    showErr(e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
 }
 
 // ---- signature pad --------------------------------------------------------
@@ -270,19 +449,31 @@ function initSignature(){
   const dpr = window.devicePixelRatio || 1;
   cv.width = cv.offsetWidth * dpr; cv.height = cv.offsetHeight * dpr;
   const ctx = cv.getContext("2d");
-  ctx.scale(dpr, dpr); ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#121723";
+  // White ground first, or the JPEG encodes transparency as black.
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.scale(dpr, dpr);
+  ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#121723";
+
   let drawing = false;
   const pt = (e) => {
     const r = cv.getBoundingClientRect();
-    const t = e.touches ? e.touches[0] : e;
-    return { x: t.clientX - r.left, y: t.clientY - r.top };
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
-  const start = (e) => { drawing = true; signatureDrawn = true; const p = pt(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); };
-  const move  = (e) => { if (!drawing) return; const p = pt(e); ctx.lineTo(p.x, p.y); ctx.stroke(); e.preventDefault(); };
-  const end   = () => { drawing = false; };
-  cv.addEventListener("pointerdown", start); cv.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", end);
-  $("clearsig").onclick = () => { ctx.clearRect(0, 0, cv.width, cv.height); signatureDrawn = false; };
+  cv.addEventListener("pointerdown", (e) => {
+    drawing = true; signatureDrawn = true;
+    const p = pt(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault();
+  });
+  cv.addEventListener("pointermove", (e) => {
+    if (!drawing) return;
+    const p = pt(e); ctx.lineTo(p.x, p.y); ctx.stroke(); e.preventDefault();
+  });
+  window.addEventListener("pointerup", () => { drawing = false; });
+
+  $("clearsig").onclick = () => {
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height); ctx.restore();
+    signatureDrawn = false;
+  };
 }
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});

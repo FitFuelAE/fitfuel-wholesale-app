@@ -29,6 +29,14 @@ the same pattern the delivery app uses for `/driver/` and `/admin/`.
 
 Sales order entry is Phase 2 and will land at `/sales/`.
 
+## The driver app is complete
+
+Photos are downscaled on the phone (long edge 1600px, JPEG quality stepped down
+until under ~150 kB) and uploaded to the private `wholesale-docs` bucket via
+`POST /upload`. The signature pad exports the same way. Payment capture proposes
+the pro-rata split across the drop's invoices — matching the server's own
+calculation — and blocks submission if an edited split doesn't add up.
+
 ## Backend
 
 All three apps point at the wholesale Supabase project:
@@ -41,13 +49,8 @@ Project `sihvyglufmftrpwogbeq` — FitFuel org, South Asia (Mumbai), chosen for 
 
 ## Still to build (Phase 1)
 
-- **Photo + signature upload.** The driver app captures both but stores
-  `PENDING_UPLOAD/...` placeholders. Needs client-side downscaling to ~150 kB and
-  an upload endpoint writing to the private `wholesale-docs` bucket — port the
-  approach from the delivery app's proof upload.
-- **Collection screen.** `/driver/collect` is implemented server-side, including
-  the pro-rata split across a drop's invoices; the driver UI for it isn't built.
 - **Custody handover screen** for end of day, both the driver and storekeeper halves.
+  `/custody/handover` and `/custody/confirm` are implemented server-side.
 - **Office invoice entry form** — currently a stub. Needs invoice number, amount,
   VAT and PDF upload, per invoice on the order.
 - **Driver dropdown** in the warehouse app — populate from a staff endpoint.
