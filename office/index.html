@@ -21,8 +21,8 @@ header{background:var(--indigo);color:#fff;padding:14px 20px;display:flex;
   align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:5}
 header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:-.3px}
 header .who{font-size:12px;opacity:.75}
-main{padding:20px;max-width:1000px;margin:0 auto}
-.card{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px}
+main{padding:20px;max-width:960px;margin:0 auto}
+.card{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:16px}
 label{display:block;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;
   color:var(--subtle);margin-bottom:6px}
 input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);
@@ -30,33 +30,48 @@ input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-ra
 button{border:0;border-radius:var(--r-pill);padding:11px 18px;font-size:14px;font-weight:700;
   font-family:inherit;background:#1E1E1E;color:#fff;cursor:pointer}
 button.sec{background:transparent;color:var(--ink-deep);border:1px solid var(--line)}
+button.sm{padding:8px 14px;font-size:13px}
 button:disabled{opacity:.45}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:var(--r-pill)}
 .p-acc{background:rgba(58,52,210,.10);color:var(--violet)}
 .p-ok{background:rgba(52,168,83,.12);color:var(--ok)}
 .p-warn{background:rgba(239,179,76,.16);color:#9A6B10}
+.p-neu{background:#F4F5F5;color:var(--slate);border:1px solid var(--line)}
 .muted{color:var(--subtle);font-size:13px}
 .mono{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
 .err{background:rgba(232,69,69,.10);color:var(--bad);padding:10px 12px;border-radius:var(--r);
   font-size:13px;margin-bottom:14px}
+.okmsg{background:rgba(52,168,83,.10);color:var(--ok);padding:10px 12px;border-radius:var(--r);
+  font-size:13px;margin-bottom:14px}
 .hide{display:none}
-h2{font-size:16px;margin:0 0 12px;letter-spacing:-.4px}
-.suggest{background:rgba(58,52,210,.06);border:1px solid rgba(58,52,210,.22);
-  border-radius:var(--r);padding:11px 13px;font-size:13px;margin:10px 0}
-.line{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed #F0F1F3;font-size:14px}
+h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
+.split{background:rgba(58,52,210,.05);border:1px solid rgba(58,52,210,.20);
+  border-radius:var(--r);padding:12px 14px;font-size:13px;margin:12px 0}
+.grp{border:1px solid var(--line);border-radius:var(--r);margin-bottom:10px;overflow:hidden}
+.grp-h{background:#F4F5F5;padding:9px 13px;display:flex;justify-content:space-between;
+  align-items:center;gap:10px;border-bottom:1px solid var(--line)}
+.grp-h .co{font-size:12px;font-weight:700;letter-spacing:.4px}
+.line{display:flex;justify-content:space-between;gap:10px;padding:9px 13px;
+  border-bottom:1px dashed #F0F1F3;font-size:14px;align-items:center}
 .line:last-child{border-bottom:0}
+.line select{width:auto;min-width:150px;font-size:12px;padding:5px 8px}
+.inv{border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:10px}
+.inv.issued{border-color:var(--ok);background:rgba(52,168,83,.04)}
+.f3{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px}
+@media (max-width:620px){.f3{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 
 <header>
   <div><h1>Office — order inbox</h1><div class="who" id="who"></div></div>
-  <button class="sec hide" id="out" style="color:#fff;border-color:rgba(255,255,255,.3);padding:8px 14px;font-size:13px">Sign out</button>
+  <button class="sec sm hide" id="out" style="color:#fff;border-color:rgba(255,255,255,.3)">Sign out</button>
 </header>
 
 <main>
   <div id="err" class="err hide"></div>
+  <div id="ok" class="okmsg hide"></div>
 
   <section id="login" class="card" style="max-width:380px">
     <label for="u">Username</label>
@@ -69,6 +84,7 @@ h2{font-size:16px;margin:0 0 12px;letter-spacing:-.4px}
   </section>
 
   <section id="inbox" class="hide"></section>
+  <input type="file" accept="application/pdf,image/*" id="pdfpick" class="hide">
 </main>
 
 <script>
@@ -81,7 +97,9 @@ const T = {
   get user(){ try { return JSON.parse(localStorage.getItem("ff_wh_office_user")||"null"); } catch { return null; } },
   set user(v){ v ? localStorage.setItem("ff_wh_office_user", JSON.stringify(v)) : localStorage.removeItem("ff_wh_office_user"); },
 };
-const showErr = (m) => { const e=$("err"); e.textContent=m; e.classList.toggle("hide", !m); };
+const showErr = (m) => { const e=$("err"); e.textContent=m||""; e.classList.toggle("hide", !m); if(m) window.scrollTo(0,0); };
+const showOk  = (m) => { const e=$("ok");  e.textContent=m||""; e.classList.toggle("hide", !m); };
+const aed = (n) => Number(n || 0).toFixed(2);
 
 async function api(path, body){
   const res = await fetch(API + path, {
@@ -94,6 +112,31 @@ async function api(path, body){
   return d;
 }
 
+// PDFs go up as-is; a photographed invoice gets downscaled first.
+async function uploadDoc(file){
+  let blob = file, contentType = file.type || "application/pdf";
+  if (contentType.startsWith("image/")) {
+    const img = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(img.width * scale); cv.height = Math.round(img.height * scale);
+    cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+    blob = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.8));
+    contentType = "image/jpeg";
+  }
+  const base64 = await new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result).split(",")[1]);
+    fr.onerror = () => rej(new Error("Could not read that file."));
+    fr.readAsDataURL(blob);
+  });
+  const { path } = await api("/upload", { kind: "invoice-pdf", contentType, base64 });
+  return path;
+}
+
+let ENTITIES = [];
+
+// ---- login ----------------------------------------------------------------
 $("go").onclick = async () => {
   showErr(""); $("go").disabled = true;
   try {
@@ -109,64 +152,188 @@ async function boot(){
   if (!T.token){ $("login").classList.remove("hide"); $("inbox").classList.add("hide"); $("out").classList.add("hide"); return; }
   $("login").classList.add("hide"); $("out").classList.remove("hide");
   $("who").textContent = T.user?.name ?? "";
+  try { ENTITIES = (await api("/entities")).entities; } catch { ENTITIES = []; }
   await loadInbox();
 }
 
+// ---- inbox ----------------------------------------------------------------
 async function loadInbox(){
   const el = $("inbox"); el.classList.remove("hide");
   el.innerHTML = `<p class="muted">Loading…</p>`;
   try {
     const { orders } = await api("/office/inbox");
-    if (!orders.length){ el.innerHTML = `<div class="card"><p class="muted">Inbox empty — nothing waiting to be routed.</p></div>`; return; }
-
-    el.innerHTML = `<h2>${orders.length} order${orders.length>1?"s":""} waiting</h2>` + orders.map((o) => {
-      const lines = o.order_lines ?? [];
-      // Group by resolved company — this is the split made visible.
-      const groups = {};
-      for (const l of lines) (groups[l.billing_entity_id ?? "unresolved"] ??= []).push(l);
-      const nGroups = Object.keys(groups).length;
-
-      return `<div class="card">
-        <div class="row" style="justify-content:space-between">
-          <div>
-            <div style="font-weight:700">${o.order_no} · ${o.customers?.name ?? "—"}</div>
-            <div class="muted">${o.salesman_username} · ${lines.length} lines
-              · ${o.customers?.tax_invoice_required ? "needs tax invoice" : "no tax invoice"}</div>
-          </div>
-          <span class="pill p-acc">${o.status}</span>
-        </div>
-
-        <div class="suggest">
-          ${nGroups > 1
-            ? `<strong>Splits into ${nGroups} invoices.</strong> One delivery, ${nGroups} documents.`
-            : `<strong>Single invoice.</strong>`}
-          ${groups.unresolved ? ` <span class="pill p-warn">${groups.unresolved.length} line(s) unrouted</span>` : ""}
-        </div>
-
-        ${lines.map((l) => `<div class="line">
-            <span>${l.description} <span class="muted">· ${l.category}</span></span>
-            <span class="mono">${Number(l.qty_ordered)}</span>
-          </div>`).join("")}
-
-        <div class="row" style="margin-top:14px">
-          <button data-accept="${o.id}">Accept routing</button>
-          <button class="sec" data-invoice="${o.id}">Enter ERP invoice no.</button>
-        </div>
-      </div>`;
-    }).join("");
-
-    el.querySelectorAll("[data-accept]").forEach((b) => b.onclick = async () => {
-      showErr("");
-      try { await api("/office/route", { orderId: b.dataset.accept }); await loadInbox(); }
-      catch(e){ showErr(e.message); }
-    });
-
-    // TODO Phase 1: replace the prompt with a proper per-invoice form that also
-    // takes the amount, VAT and the invoice PDF upload.
-    el.querySelectorAll("[data-invoice]").forEach((b) => b.onclick = () =>
-      showErr("Invoice entry form not built yet — see README, Phase 1."));
-
+    if (!orders.length){
+      el.innerHTML = `<div class="card"><p class="muted">Inbox empty — nothing waiting to be routed or invoiced.</p></div>`;
+      return;
+    }
+    el.innerHTML = `<h2>${orders.length} order${orders.length>1?"s":""} waiting</h2>` +
+      orders.map(renderOrder).join("");
+    orders.forEach(wireOrder);
   } catch(e){ showErr(e.message); el.innerHTML = ""; }
+}
+
+function renderOrder(o){
+  const lines = o.order_lines ?? [];
+  const invoices = o.invoices ?? [];
+
+  // Group lines by the company routing picked — this is the split, made visible.
+  const groups = new Map();
+  for (const l of lines) {
+    const key = l.billing_entity_id ?? "unresolved";
+    const g = groups.get(key) ?? { entity: l.billing_entities, lines: [] };
+    g.lines.push(l); groups.set(key, g);
+  }
+  const unresolved = groups.get("unresolved")?.lines.length ?? 0;
+  const nCo = [...groups.keys()].filter((k) => k !== "unresolved").length;
+  const needsRouting = o.status === "submitted" || !invoices.length;
+
+  return `<div class="card" data-order="${o.id}">
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
+      <div>
+        <div style="font-weight:700;font-size:15px">${o.order_no} · ${o.customers?.name ?? "—"}</div>
+        <div class="muted">${o.salesman_username} · ${lines.length} line${lines.length===1?"":"s"}
+          · ${o.customers?.tax_invoice_required ? "needs tax invoice" : "no tax invoice"}
+          · ${o.customers?.payment_terms_days ? `${o.customers.payment_terms_days}-day terms` : "cash"}
+          ${o.lpo_reference ? ` · LPO ${o.lpo_reference}` : ""}</div>
+      </div>
+      <span class="pill ${needsRouting ? "p-acc" : "p-warn"}">${needsRouting ? "Confirm company" : "Awaiting invoice no."}</span>
+    </div>
+
+    <div class="split">
+      ${nCo > 1
+        ? `<strong>Splits into ${nCo} invoices</strong> — one delivery, ${nCo} documents from ${nCo} companies.`
+        : `<strong>Single invoice.</strong>`}
+      ${unresolved ? ` <span class="pill p-warn">${unresolved} line${unresolved===1?"":"s"} unrouted</span>` : ""}
+    </div>
+
+    ${[...groups.entries()].map(([key, g]) => `
+      <div class="grp">
+        <div class="grp-h">
+          <span class="co">${key === "unresolved" ? "⚠ NO COMPANY RESOLVED"
+            : `${g.entity?.code ?? "?"} · ${(g.entity?.erp ?? "").toUpperCase()}`}</span>
+          <span class="muted mono">${g.lines.length} line${g.lines.length===1?"":"s"}</span>
+        </div>
+        ${g.lines.map((l) => `
+          <div class="line">
+            <span>${l.description}
+              <span class="muted">· ${l.category} · ${Number(l.qty_ordered)}</span>
+              ${l.routing_overridden_by ? `<span class="pill p-neu">overridden</span>` : ""}
+            </span>
+            ${needsRouting ? `<select data-line="${l.id}">
+              ${ENTITIES.map((e) => `<option value="${e.id}"${e.id === l.billing_entity_id ? " selected" : ""}>${e.code} · ${e.erp}</option>`).join("")}
+            </select>` : ""}
+          </div>`).join("")}
+      </div>`).join("")}
+
+    ${needsRouting ? `
+      <div class="row" style="margin-top:14px">
+        <button data-accept="${o.id}">Confirm company &amp; create invoices</button>
+        <span class="muted">Changing a company above asks for a reason.</span>
+      </div>`
+    : `
+      <label style="margin-top:16px">Invoice numbers from the ERP</label>
+      ${invoices.map((v) => {
+        const done = !!v.erp_invoice_no;
+        const ent = v.billing_entities;
+        const rate = Number(ent?.default_vat_rate ?? 0);
+        return `<div class="inv ${done ? "issued" : ""}" data-inv="${v.id}">
+          <div class="row" style="justify-content:space-between">
+            <span class="co" style="font-size:12px;font-weight:700">${ent?.code ?? ""} · ${v.erp.toUpperCase()}
+              ${ent?.vat_registered ? `<span class="muted">· VAT ${rate}%</span>` : `<span class="muted">· not VAT registered</span>`}</span>
+            ${done ? `<span class="pill p-ok">${v.erp_invoice_no}</span>` : `<span class="pill p-warn">pending</span>`}
+          </div>
+          <div style="height:10px"></div>
+          <div class="f3">
+            <div><label>Invoice no.</label><input class="mono" data-f="no" value="${v.erp_invoice_no ?? ""}" placeholder="e.g. INV-2291"></div>
+            <div><label>Total (AED)</label><input class="mono" type="number" step="0.01" data-f="amt" value="${v.amount ?? ""}"></div>
+            <div><label>VAT included</label><input class="mono" type="number" step="0.01" data-f="vat" value="${v.vat_amount ?? ""}" data-rate="${ent?.vat_registered ? rate : 0}"></div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="sec sm" data-pdf="${v.id}">${v.pdf_path ? "✓ PDF attached" : "Attach PDF"}</button>
+            <button class="sm" data-save="${v.id}">Save</button>
+            <span class="muted" data-state="${v.id}"></span>
+          </div>
+        </div>`;
+      }).join("")}`}
+  </div>`;
+}
+
+function wireOrder(o){
+  const card = document.querySelector(`[data-order="${o.id}"]`);
+  if (!card) return;
+
+  // ---- routing ----
+  const accept = card.querySelector("[data-accept]");
+  if (accept) accept.onclick = async () => {
+    accept.disabled = true; showErr(""); showOk("");
+    try {
+      const overrides = [];
+      for (const sel of card.querySelectorAll("[data-line]")) {
+        const line = (o.order_lines ?? []).find((l) => l.id === sel.dataset.line);
+        if (line && sel.value !== line.billing_entity_id) {
+          const reason = prompt(`Why is "${line.description}" moving to ${ENTITIES.find((e) => e.id === sel.value)?.code}?`);
+          if (!reason?.trim()) { accept.disabled = false; return showErr("An override needs a reason — nothing was changed."); }
+          overrides.push({ lineId: line.id, billingEntityId: sel.value, reason: reason.trim() });
+        }
+      }
+      const r = await api("/office/route", { orderId: o.id, overrides });
+      showOk(`${o.order_no}: ${r.invoices} invoice${r.invoices>1?"s":""} created. Key the ERP numbers in below.`);
+      await loadInbox();
+    } catch(e){ showErr(e.message); accept.disabled = false; }
+  };
+
+  // ---- VAT convenience: derive the included VAT from the total ----
+  card.querySelectorAll('[data-f="amt"]').forEach((amt) => amt.oninput = () => {
+    const box = amt.closest(".inv");
+    const vat = box.querySelector('[data-f="vat"]');
+    const rate = Number(vat.dataset.rate || 0);
+    if (rate > 0 && amt.value) vat.value = (Number(amt.value) * rate / (100 + rate)).toFixed(2);
+    else if (!rate) vat.value = "0.00";
+  });
+
+  // ---- PDF ----
+  card.querySelectorAll("[data-pdf]").forEach((b) => b.onclick = () => {
+    const picker = $("pdfpick"); picker.value = "";
+    picker.onchange = async () => {
+      const f = picker.files?.[0]; if (!f) return;
+      const was = b.textContent; b.textContent = "Uploading…"; b.disabled = true; showErr("");
+      try {
+        b.dataset.path = await uploadDoc(f);
+        b.textContent = "✓ PDF attached";
+      } catch(e){ showErr(e.message); b.textContent = was; }
+      finally { b.disabled = false; }
+    };
+    picker.click();
+  });
+
+  // ---- save an invoice number ----
+  card.querySelectorAll("[data-save]").forEach((b) => b.onclick = async () => {
+    const id = b.dataset.save;
+    const box = card.querySelector(`[data-inv="${id}"]`);
+    const state = card.querySelector(`[data-state="${id}"]`);
+    const no  = box.querySelector('[data-f="no"]').value.trim();
+    const amt = box.querySelector('[data-f="amt"]').value;
+    const vat = box.querySelector('[data-f="vat"]').value;
+    const pdf = card.querySelector(`[data-pdf="${id}"]`)?.dataset.path;
+
+    showErr(""); showOk("");
+    if (!no) return showErr("The invoice number from the ERP is required.");
+    b.disabled = true; state.textContent = "Saving…";
+    try {
+      const r = await api("/office/invoice", {
+        invoiceId: id, erpInvoiceNo: no,
+        amount: amt ? Number(amt) : null,
+        vatAmount: vat ? Number(vat) : null,
+        pdfPath: pdf ?? null,
+      });
+      if (r.awaitingInvoices === 0) {
+        showOk(`${o.order_no} is fully invoiced — released to the warehouse.`);
+      } else {
+        state.textContent = `saved · ${r.awaitingInvoices} still to key`;
+      }
+      await loadInbox();
+    } catch(e){ showErr(e.message); state.textContent = ""; b.disabled = false; }
+  });
 }
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
