@@ -66,6 +66,10 @@ h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
 .linebox .line:first-child{padding-top:10px}
 .linebox .line:last-child{padding-bottom:10px}
 .lineno{display:inline-block;min-width:22px;color:var(--subtle);font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.danger{color:var(--bad);border-color:rgba(232,69,69,.4)}
+.danger:hover{background:rgba(232,69,69,.06)}
+.cancelled{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin-bottom:8px;
+  display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--bg)}
 .held{background:rgba(239,179,76,.12);border:1px solid var(--warn);border-radius:var(--r);
   padding:13px 15px;margin:12px 0}
 .held strong{color:#8A5D08}
@@ -219,12 +223,14 @@ async function loadInbox(){
   try {
     const { orders } = await api("/office/inbox");
     if (!orders.length){
-      el.innerHTML = `<div class="card"><p class="muted">Inbox empty — nothing waiting to be routed or invoiced.</p></div>`;
+      el.innerHTML = `<div class="card"><p class="muted">Inbox empty — nothing waiting to be routed or invoiced.</p></div><div id="cancelled"></div>`;
+      renderCancelled();
       return;
     }
     el.innerHTML = `<h2>${orders.length} order${orders.length>1?"s":""} waiting</h2>` +
-      orders.map(renderOrder).join("");
+      orders.map(renderOrder).join("") + `<div id="cancelled"></div>`;
     orders.forEach(wireOrder);
+    renderCancelled();
   } catch(e){ showErr(e.message); el.innerHTML = ""; }
 }
 
@@ -305,6 +311,7 @@ function renderOrder(o){
 
     ${needsAssigning ? `
       <div class="row" style="margin-top:14px">
+        <button class="sec sm danger" data-cancel="${o.id}" data-no="${o.order_no}">Cancel this document</button>
         <select data-all="${o.id}" style="width:auto;min-width:190px">
           <option value="">Set every line to…</option>
           ${(window.ENTITIES || []).map((e) => `<option value="${e.id}">${e.display_name} · ${e.erp.toUpperCase()}</option>`).join("")}
@@ -312,6 +319,10 @@ function renderOrder(o){
         <button data-accept="${o.id}">Create invoices</button>
       </div>`
     : `
+      <div class="row" style="margin-top:14px">
+        <button class="sec sm danger" data-cancel="${o.id}" data-no="${o.order_no}">Cancel this document</button>
+        <span class="muted">Uploaded by mistake? This withdraws it — the record is kept.</span>
+      </div>
       <label style="margin-top:16px">Invoice numbers from the ERP</label>
       ${invoices.map((v) => {
         const done = !!v.erp_invoice_no;
@@ -339,6 +350,33 @@ function renderOrder(o){
         </div>`;
       }).join("")}`}
   </div>`;
+}
+
+// Documents withdrawn in the last fortnight — a mistaken cancel is itself an
+// error worth being able to undo.
+async function renderCancelled(){
+  const box = document.getElementById("cancelled");
+  if (!box) return;
+  let orders = [];
+  try { orders = (await api("/office/cancelled")).orders; } catch { return; }
+  if (!orders.length) { box.innerHTML = ""; return; }
+  box.innerHTML = `<h2 style="margin-top:26px">Recently cancelled</h2>` + orders.map((o) => `
+    <div class="cancelled">
+      <div>
+        <div style="font-weight:700">${o.source_doc_no ?? o.order_no}
+          <span class="muted">· ${o.customers?.name ?? ""}</span></div>
+        <div class="muted">${o.cancel_reason ?? ""} — ${o.cancelled_by ?? ""}${o.cancelled_at ? `, ${new Date(o.cancelled_at).toLocaleString([], {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}` : ""}</div>
+      </div>
+      <button class="sec sm" data-restore="${o.id}">Restore</button>
+    </div>`).join("");
+  box.querySelectorAll("[data-restore]").forEach((b) => b.onclick = async () => {
+    b.disabled = true; showErr(""); showOk("");
+    try {
+      const r = await api("/office/restore", { orderId: b.dataset.restore });
+      showOk(`${r.orderNo} restored.`);
+      await loadInbox();
+    } catch(e){ showErr(e.message); b.disabled = false; }
+  });
 }
 
 // Lines the warehouse could not supply in full.
@@ -423,6 +461,18 @@ function wireOrder(o){
   // ---- save an invoice number ----
   // The invoice was amended in the ERP but kept its number, so there is no new
   // document — just the corrected total.
+  card.querySelectorAll("[data-cancel]").forEach((b) => b.onclick = async () => {
+    const why = prompt(`Cancel ${b.dataset.no}? Say why — it stays on the record.`);
+    if (why === null) return;                       // they changed their mind
+    if (!why.trim()) return showErr("A cancellation needs a reason.");
+    b.disabled = true; showErr(""); showOk("");
+    try {
+      const r = await api("/office/cancel", { orderId: b.dataset.cancel, reason: why.trim() });
+      showOk(`${r.orderNo} cancelled. It is listed below if you need it back.`);
+      await loadInbox();
+    } catch(e){ showErr(e.message); b.disabled = false; }
+  });
+
   card.querySelectorAll("[data-amend]").forEach((b) => b.onclick = async () => {
     const id = b.dataset.amend;
     const box = card.querySelector(`[data-inv="${id}"]`);
