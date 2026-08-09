@@ -59,6 +59,16 @@ h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
 .inv{border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:10px}
 .inv.issued{border-color:var(--ok);background:rgba(52,168,83,.04)}
 .f3{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px}
+.held{background:rgba(239,179,76,.12);border:1px solid var(--warn);border-radius:var(--r);
+  padding:13px 15px;margin:12px 0}
+.held strong{color:#8A5D08}
+.shortline{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:6px 0;
+  border-bottom:1px dashed rgba(239,179,76,.35)}
+.shortline:last-child{border-bottom:0}
+.hist{border-left:2px solid var(--line);margin:10px 0 0 6px;padding-left:14px}
+.hist .h{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:5px 0}
+.hist .h.now{font-weight:700;color:var(--ink-deep)}
+.strike{text-decoration:line-through;color:var(--subtle)}
 @media (max-width:620px){.f3{grid-template-columns:1fr}}
 </style>
 </head>
@@ -238,6 +248,24 @@ function renderOrder(o){
       <span class="pill ${needsAssigning ? "p-acc" : "p-warn"}">${needsAssigning ? "Confirm company" : "Awaiting invoice no."}</span>
     </div>
 
+    ${o.hold_reason ? `
+      <div class="held">
+        <strong>⚠ Back from the warehouse</strong>
+        <div style="margin:4px 0 8px">${o.hold_reason}${o.held_by ? ` — ${o.held_by}` : ""}${o.held_at ? `, ${new Date(o.held_at).toLocaleString([], {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}` : ""}</div>
+        ${shortLines(o).length ? `
+          <label style="margin-top:8px">What could not be supplied</label>
+          ${shortLines(o).map((l) => `
+            <div class="shortline">
+              <span>${l.description}${l.short_reason ? ` <span class="muted">· ${l.short_reason}</span>` : ""}</span>
+              <span class="mono">${Number(l.qty_ordered)} ordered → <strong>${Number(l.qty_confirmed)}</strong> available</span>
+            </div>`).join("")}` : ""}
+        <div class="muted" style="margin-top:10px">
+          Amend the invoice in ${(o.source_erp || "the ERP").toUpperCase()}, then either
+          re-upload the amended PDF above, or confirm the new total below if the invoice
+          number has not changed.
+        </div>
+      </div>` : ""}
+
     <div class="split">
       ${needsAssigning
         ? `<strong>Which company is each line invoiced under?</strong> One invoice is created per company you pick.`
@@ -293,13 +321,37 @@ function renderOrder(o){
             <div><label>Total (AED)</label><input class="mono" type="number" step="0.01" data-f="amt" value="${v.amount ?? ""}"></div>
             <div><label>VAT included</label><input class="mono" type="number" step="0.01" data-f="vat" value="${v.vat_amount ?? ""}" data-rate="${ent?.vat_registered ? rate : 0}"></div>
           </div>
+          ${revisionHistory(v)}
           <div class="row" style="margin-top:10px">
             <button class="sec sm" data-pdf="${v.id}">${v.pdf_path ? "✓ PDF attached" : "Attach PDF"}</button>
             <button class="sm" data-save="${v.id}">Save</button>
+            ${o.hold_reason ? `<button class="sm" data-amend="${v.id}" data-order="${o.id}">Confirm amended total</button>` : ""}
             <span class="muted" data-state="${v.id}"></span>
           </div>
         </div>`;
       }).join("")}`}
+  </div>`;
+}
+
+// Lines the warehouse could not supply in full.
+function shortLines(o){
+  return (o.order_lines ?? []).filter((l) =>
+    l.qty_confirmed != null && Number(l.qty_confirmed) < Number(l.qty_ordered));
+}
+
+// Every version of the invoice, oldest first, with what changed and who did it.
+function revisionHistory(v){
+  const revs = [...(v.invoice_revisions ?? [])].sort((a, b) => a.revision - b.revision);
+  if (revs.length < 2) return "";
+  return `<div class="hist">
+    <label style="margin-bottom:4px">History</label>
+    ${revs.map((r, i) => {
+      const last = i === revs.length - 1;
+      return `<div class="h ${last ? "now" : ""}">
+        <span>${last ? "now" : `v${r.revision}`} · ${r.reason}${r.created_by ? ` · ${r.created_by}` : ""}</span>
+        <span class="mono ${last ? "" : "strike"}">AED ${aed(r.amount)}</span>
+      </div>`;
+    }).join("")}
   </div>`;
 }
 
@@ -361,6 +413,26 @@ function wireOrder(o){
   });
 
   // ---- save an invoice number ----
+  // The invoice was amended in the ERP but kept its number, so there is no new
+  // document — just the corrected total.
+  card.querySelectorAll("[data-amend]").forEach((b) => b.onclick = async () => {
+    const id = b.dataset.amend;
+    const box = card.querySelector(`[data-inv="${id}"]`);
+    const amt = box.querySelector('[data-f="amt"]').value;
+    const vat = box.querySelector('[data-f="vat"]').value;
+    showErr(""); showOk("");
+    if (!amt) return showErr("Enter the amended total first.");
+    b.disabled = true;
+    try {
+      await api("/office/amend-confirm", {
+        orderId: b.dataset.order, invoiceId: id,
+        amount: Number(amt), vatAmount: vat ? Number(vat) : undefined,
+      });
+      showOk(`${o.order_no}: amendment confirmed at AED ${aed(amt)} — back to the warehouse.`);
+      await loadInbox();
+    } catch(e){ showErr(e.message); b.disabled = false; }
+  });
+
   card.querySelectorAll("[data-save]").forEach((b) => b.onclick = async () => {
     const id = b.dataset.save;
     const box = card.querySelector(`[data-inv="${id}"]`);
