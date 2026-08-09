@@ -190,7 +190,11 @@ async function loadRun(){
   el.innerHTML = `<p class="muted">Loading today's run…</p>`;
   try {
     const { drops } = await api("/driver/run");
-    if (!drops.length) { el.innerHTML = `<div class="card"><p class="muted">Nothing assigned to you today.</p></div>`; return; }
+    if (!drops.length) {
+      el.innerHTML = `<div class="card"><p class="muted">Nothing assigned to you today.</p></div>`;
+      await renderMoney(el);
+      return;
+    }
     el.innerHTML = `<h2>${drops.length} drop${drops.length>1?"s":""} today</h2>` + drops.map((d, i) => {
       const o = d.orders, c = o.customers, n = (o.invoices||[]).length;
       const done = d.status === "delivered" || d.status === "partial";
@@ -204,7 +208,115 @@ async function loadRun(){
     }).join("");
     el.querySelectorAll(".drop").forEach((n) =>
       n.onclick = () => openDrop(drops.find((d) => d.id === n.dataset.id)));
+    await renderMoney(el);
   } catch (e) { showErr(e.message); el.innerHTML = ""; }
+}
+
+// ---- end of day: money in hand -------------------------------------------
+// Everything collected today that hasn't been handed on. Money in transit or
+// under dispute is excluded by the server, so what shows here is exactly what
+// the driver is answerable for right now.
+async function renderMoney(el){
+  let holding;
+  try { holding = await api("/custody/holding"); }
+  catch { return; }                       // never block the run list on this
+  if (!holding.collections.length) return;
+
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `
+    <label>In your hands</label>
+    <div style="font-size:24px;font-weight:900;letter-spacing:-.8px">AED ${money(holding.total)}</div>
+    <div class="muted" style="margin:4px 0 12px">
+      ${holding.collections.length} collection${holding.collections.length>1?"s":""} —
+      hand over to the storekeeper when you get back
+    </div>
+    <button id="handover">Hand over</button>`;
+  el.appendChild(card);
+  $("handover").onclick = () => openHandover(holding.collections, holding.total);
+}
+
+async function openHandover(collections, total){
+  showErr(""); showOk("");
+  $("run").classList.add("hide");
+  const el = $("detail"); el.classList.remove("hide");
+  el.innerHTML = `<p class="muted">Loading…</p>`;
+
+  let staff = [];
+  try { staff = (await api("/staff?role=warehouse")).staff; }
+  catch (e) { showErr(e.message); }
+
+  el.innerHTML = `
+    <button class="sec" id="back" style="margin-bottom:12px">← Back to run</button>
+
+    <div class="card">
+      <label>Handing over</label>
+      <div style="font-size:24px;font-weight:900;letter-spacing:-.8px" id="hoTotal">AED ${money(total)}</div>
+      <div class="muted" id="hoCount">${collections.length} collections</div>
+    </div>
+
+    <div class="card">
+      <label>Included — untick anything you're keeping</label>
+      ${collections.map((c) => {
+        const o = c.deliveries?.orders;
+        return `<label class="inv" style="cursor:pointer;margin-bottom:6px">
+          <span>
+            <span class="no">AED ${money(c.amount)} · ${c.method}${c.cheque_no ? " " + c.cheque_no : ""}</span>
+            <span class="muted" style="display:block">${o?.order_no ?? ""} · ${o?.customers?.name ?? ""}</span>
+          </span>
+          <input type="checkbox" class="pick" data-id="${c.id}" data-amt="${c.amount}" checked
+                 style="width:22px;height:22px;flex:none">
+        </label>`;
+      }).join("")}
+    </div>
+
+    <div class="card">
+      <label for="to">Hand to</label>
+      <select id="to">
+        ${staff.length
+          ? staff.map((s) => `<option value="${s.username}">${s.name}</option>`).join("")
+          : `<option value="">No warehouse staff found</option>`}
+      </select>
+      <div style="height:10px"></div>
+      <label for="honote">Note</label>
+      <input id="honote" placeholder="Optional">
+    </div>
+
+    <div class="card">
+      <button id="doHandover">Confirm handover</button>
+      <div class="muted" style="margin-top:8px;text-align:center">
+        The storekeeper counts it and confirms on their own device.
+      </div>
+    </div>`;
+
+  $("back").onclick = loadRun;
+
+  const recount = () => {
+    const picked = [...el.querySelectorAll(".pick:checked")];
+    const sum = picked.reduce((t, i) => t + Number(i.dataset.amt), 0);
+    $("hoTotal").textContent = `AED ${money(sum)}`;
+    $("hoCount").textContent = `${picked.length} collection${picked.length === 1 ? "" : "s"}`;
+    $("doHandover").disabled = picked.length === 0;
+  };
+  el.querySelectorAll(".pick").forEach((i) => i.onchange = recount);
+
+  $("doHandover").onclick = async () => {
+    const btn = $("doHandover"); btn.disabled = true; btn.textContent = "Sending…";
+    showErr("");
+    try {
+      const picked = [...el.querySelectorAll(".pick:checked")].map((i) => i.dataset.id);
+      const to = $("to").value;
+      if (!to) throw new Error("Pick who you're handing it to.");
+      const r = await api("/custody/handover", {
+        toUser: to, toRole: "warehouse",
+        collectionIds: picked, note: $("honote").value.trim() || null,
+      });
+      showOk(`AED ${money(r.total)} handed to ${to} — waiting for them to confirm.`);
+      await loadRun();
+    } catch (e) {
+      showErr(e.message);
+    } finally { btn.disabled = false; btn.textContent = "Confirm handover"; }
+  };
 }
 
 // ---- drop detail ----------------------------------------------------------

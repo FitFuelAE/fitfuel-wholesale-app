@@ -45,6 +45,14 @@ h2{font-size:16px;margin:0 0 12px;letter-spacing:-.4px}
 .pick:last-of-type{border-bottom:0}
 .pick .qty{width:92px;flex:none}
 .short{border-color:var(--warn)!important}
+.tabs{display:flex;gap:8px;margin-bottom:16px}
+.tab{background:transparent;color:var(--subtle);border:1px solid var(--line);padding:9px 16px}
+.tab.on{background:var(--indigo);color:#fff;border-color:var(--indigo)}
+.badge{background:var(--bad);color:#fff;border-radius:var(--r-pill);padding:1px 7px;
+  font-size:11px;margin-left:5px}
+.big{font-size:24px;font-weight:900;letter-spacing:-.8px}
+.xfer{border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:10px}
+.xfer.wait{border-color:var(--violet);background:rgba(58,52,210,.04)}
 </style>
 </head>
 <body>
@@ -67,7 +75,13 @@ h2{font-size:16px;margin:0 0 12px;letter-spacing:-.4px}
     <button id="go" style="width:100%">Sign in</button>
   </section>
 
+  <nav id="tabs" class="tabs hide">
+    <button class="tab on" data-tab="queue">Orders</button>
+    <button class="tab" data-tab="money">Money <span id="inboxBadge" class="badge hide">0</span></button>
+  </nav>
+
   <section id="queue" class="hide"></section>
+  <section id="money" class="hide"></section>
 </main>
 
 <script>
@@ -105,17 +119,128 @@ $("go").onclick = async () => {
 $("out").onclick = () => { T.token=null; T.user=null; location.reload(); };
 
 async function boot(){
-  if (!T.token){ $("login").classList.remove("hide"); $("queue").classList.add("hide"); $("out").classList.add("hide"); return; }
-  $("login").classList.add("hide"); $("out").classList.remove("hide");
+  if (!T.token){
+    $("login").classList.remove("hide"); $("tabs").classList.add("hide");
+    $("queue").classList.add("hide"); $("money").classList.add("hide"); $("out").classList.add("hide");
+    return;
+  }
+  $("login").classList.add("hide"); $("out").classList.remove("hide"); $("tabs").classList.remove("hide");
   $("who").textContent = T.user?.name ?? "";
   await loadQueue();
+  refreshBadge();
+}
+
+// ---- tabs -----------------------------------------------------------------
+document.querySelectorAll(".tab").forEach((b) => b.onclick = async () => {
+  document.querySelectorAll(".tab").forEach((x) => x.classList.remove("on"));
+  b.classList.add("on");
+  showErr("");
+  const money = b.dataset.tab === "money";
+  $("queue").classList.toggle("hide", money);
+  $("money").classList.toggle("hide", !money);
+  money ? await loadMoney() : await loadQueue();
+});
+
+async function refreshBadge(){
+  try {
+    const { transfers } = await api("/custody/inbox");
+    const b = $("inboxBadge");
+    b.textContent = transfers.length;
+    b.classList.toggle("hide", transfers.length === 0);
+  } catch { /* badge is cosmetic */ }
+}
+
+const aed = (n) => Number(n || 0).toFixed(2);
+
+// ---- money ----------------------------------------------------------------
+// Two halves: what's been handed TO me and needs counting, and what I'm now
+// holding and must pass on to the office. Both sides confirm, so cash is never
+// in transit without a named holder.
+async function loadMoney(){
+  const el = $("money"); el.classList.remove("hide");
+  el.innerHTML = `<p class="muted">Loading…</p>`;
+  try {
+    const [{ transfers }, holding, { staff }] = await Promise.all([
+      api("/custody/inbox"), api("/custody/holding"), api("/staff?role=office"),
+    ]);
+
+    el.innerHTML = `
+      <h2>Handed to you — count and confirm</h2>
+      ${transfers.length ? transfers.map((t) => `
+        <div class="xfer wait">
+          <div class="row" style="justify-content:space-between">
+            <div>
+              <div class="big">AED ${aed(t.total_amount)}</div>
+              <div class="muted">from ${t.from_user} · ${t.items} collection${t.items===1?"":"s"}
+                · ${new Date(t.sender_confirmed_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</div>
+              ${t.note ? `<div class="muted">"${t.note}"</div>` : ""}
+            </div>
+          </div>
+          <div style="height:10px"></div>
+          <label for="cnt-${t.id}">What you actually counted (AED)</label>
+          <input id="cnt-${t.id}" type="number" inputmode="decimal" step="0.01" value="${aed(t.total_amount)}">
+          <div style="height:10px"></div>
+          <button data-confirm="${t.id}">Confirm receipt</button>
+        </div>`).join("")
+        : `<div class="card"><p class="muted">Nothing waiting to be counted.</p></div>`}
+
+      <h2 style="margin-top:22px">In your custody</h2>
+      ${holding.collections.length ? `
+        <div class="card">
+          <div class="big">AED ${aed(holding.total)}</div>
+          <div class="muted" style="margin:4px 0 12px">
+            ${holding.collections.length} collection${holding.collections.length>1?"s":""} to remit to the office
+          </div>
+          <label for="toOffice">Hand to</label>
+          <select id="toOffice">
+            ${staff.length
+              ? staff.map((s) => `<option value="${s.username}">${s.name}</option>`).join("")
+              : `<option value="">No office staff found</option>`}
+          </select>
+          <div style="height:10px"></div>
+          <button id="remit">Remit to office</button>
+        </div>`
+        : `<div class="card"><p class="muted">Nothing in your custody.</p></div>`}`;
+
+    el.querySelectorAll("[data-confirm]").forEach((b) => b.onclick = async () => {
+      b.disabled = true; showErr("");
+      try {
+        const id = b.dataset.confirm;
+        const r = await api("/custody/confirm", {
+          transferId: id, countedAmount: Number($(`cnt-${id}`).value),
+        });
+        if (r.status === "disputed") {
+          showErr(`Counted AED ${aed(r.counted)} against AED ${aed(r.expected)} declared — flagged as disputed for the office to resolve.`);
+        }
+        await loadMoney(); refreshBadge();
+      } catch (e) { showErr(e.message); b.disabled = false; }
+    });
+
+    const remit = $("remit");
+    if (remit) remit.onclick = async () => {
+      remit.disabled = true; showErr("");
+      try {
+        const to = $("toOffice").value;
+        if (!to) throw new Error("Pick who in the office you're handing it to.");
+        await api("/custody/handover", {
+          toUser: to, toRole: "office",
+          collectionIds: holding.collections.map((c) => c.id),
+        });
+        await loadMoney();
+      } catch (e) { showErr(e.message); remit.disabled = false; }
+    };
+
+  } catch (e) { showErr(e.message); el.innerHTML = ""; }
 }
 
 async function loadQueue(){
   const el = $("queue"); el.classList.remove("hide");
   el.innerHTML = `<p class="muted">Loading…</p>`;
   try {
-    const { orders } = await api("/warehouse/queue");
+    const [{ orders }, { staff: drivers }] = await Promise.all([
+      api("/warehouse/queue"), api("/staff?role=driver"),
+    ]);
+    const driverOptions = drivers.map((d) => `<option value="${d.username}">${d.name}</option>`).join("");
     if (!orders.length){ el.innerHTML = `<div class="card"><p class="muted">Nothing waiting. All caught up.</p></div>`; return; }
 
     el.innerHTML = `<h2>${orders.length} order${orders.length>1?"s":""} in the queue</h2>` + orders.map((o) => `
@@ -145,7 +270,7 @@ async function loadQueue(){
           <button data-confirm="${o.id}">Confirm availability</button>
           <select data-driver="${o.id}" style="width:auto;min-width:170px">
             <option value="">Assign driver…</option>
-            <!-- TODO Phase 1: populate from /admin/staff?role=driver -->
+            ${driverOptions}
           </select>
           <button class="sec" data-assign="${o.id}">Assign &amp; stage</button>
         </div>

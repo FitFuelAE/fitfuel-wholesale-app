@@ -49,11 +49,8 @@ Project `sihvyglufmftrpwogbeq` — FitFuel org, South Asia (Mumbai), chosen for 
 
 ## Still to build (Phase 1)
 
-- **Custody handover screen** for end of day, both the driver and storekeeper halves.
-  `/custody/handover` and `/custody/confirm` are implemented server-side.
 - **Office invoice entry form** — currently a stub. Needs invoice number, amount,
   VAT and PDF upload, per invoice on the order.
-- **Driver dropdown** in the warehouse app — populate from a staff endpoint.
 - **Icons.** `icon-512.png` is referenced but not committed; drop one in at the repo
   root and both the manifests and Apple touch icons pick it up.
 
