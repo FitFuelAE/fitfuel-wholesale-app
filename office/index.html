@@ -185,7 +185,7 @@ function renderOrder(o){
   }
   const unresolved = groups.get("unresolved")?.lines.length ?? 0;
   const nCo = [...groups.keys()].filter((k) => k !== "unresolved").length;
-  const needsRouting = o.status === "submitted" || !invoices.length;
+  const needsAssigning = o.status === "submitted" || !invoices.length;
 
   return `<div class="card" data-order="${o.id}">
     <div class="row" style="justify-content:space-between;align-items:flex-start">
@@ -196,20 +196,22 @@ function renderOrder(o){
           · ${o.customers?.payment_terms_days ? `${o.customers.payment_terms_days}-day terms` : "cash"}
           ${o.lpo_reference ? ` · LPO ${o.lpo_reference}` : ""}</div>
       </div>
-      <span class="pill ${needsRouting ? "p-acc" : "p-warn"}">${needsRouting ? "Confirm company" : "Awaiting invoice no."}</span>
+      <span class="pill ${needsAssigning ? "p-acc" : "p-warn"}">${needsAssigning ? "Confirm company" : "Awaiting invoice no."}</span>
     </div>
 
     <div class="split">
-      ${nCo > 1
-        ? `<strong>Splits into ${nCo} invoices</strong> — one delivery, ${nCo} documents from ${nCo} companies.`
-        : `<strong>Single invoice.</strong>`}
-      ${unresolved ? ` <span class="pill p-warn">${unresolved} line${unresolved===1?"":"s"} unrouted</span>` : ""}
+      ${needsAssigning
+        ? `<strong>Which company is each line invoiced under?</strong> One invoice is created per company you pick.`
+        : nCo > 1
+          ? `<strong>Split into ${nCo} invoices</strong> — one delivery, ${nCo} documents from ${nCo} companies.`
+          : `<strong>Single invoice.</strong>`}
+      ${unresolved && !needsAssigning ? ` <span class="pill p-warn">${unresolved} line${unresolved===1?"":"s"} unassigned</span>` : ""}
     </div>
 
     ${[...groups.entries()].map(([key, g]) => `
       <div class="grp">
         <div class="grp-h">
-          <span class="co">${key === "unresolved" ? "⚠ NO COMPANY RESOLVED"
+          <span class="co">${key === "unresolved" ? "NOT YET ASSIGNED"
             : `${g.entity?.display_name ?? "?"} · ${(g.entity?.erp ?? "").toUpperCase()}`}</span>
           <span class="muted mono">${g.lines.length} line${g.lines.length===1?"":"s"}</span>
         </div>
@@ -219,16 +221,20 @@ function renderOrder(o){
               <span class="muted">· ${l.category} · ${Number(l.qty_ordered)}</span>
               ${l.routing_overridden_by ? `<span class="pill p-neu">overridden</span>` : ""}
             </span>
-            ${needsRouting ? `<select data-line="${l.id}">
-              ${ENTITIES.map((e) => `<option value="${e.id}"${e.id === l.billing_entity_id ? " selected" : ""}>${e.display_name} · ${e.erp}</option>`).join("")}
+            ${needsAssigning ? `<select data-line="${l.id}">
+              <option value="">Pick company…</option>
+              ${ENTITIES.map((e) => `<option value="${e.id}"${e.id === l.billing_entity_id ? " selected" : ""}>${e.display_name} · ${e.erp.toUpperCase()}</option>`).join("")}
             </select>` : ""}
           </div>`).join("")}
       </div>`).join("")}
 
-    ${needsRouting ? `
+    ${needsAssigning ? `
       <div class="row" style="margin-top:14px">
-        <button data-accept="${o.id}">Confirm company &amp; create invoices</button>
-        <span class="muted">Changing a company above asks for a reason.</span>
+        <select data-all="${o.id}" style="width:auto;min-width:190px">
+          <option value="">Set every line to…</option>
+          ${ENTITIES.map((e) => `<option value="${e.id}">${e.display_name} · ${e.erp.toUpperCase()}</option>`).join("")}
+        </select>
+        <button data-accept="${o.id}">Create invoices</button>
       </div>`
     : `
       <label style="margin-top:16px">Invoice numbers from the ERP</label>
@@ -263,20 +269,29 @@ function wireOrder(o){
   if (!card) return;
 
   // ---- routing ----
+  // Most orders sit under one company, so offer to set them all at once and
+  // let the office change the odd line that differs.
+  const all = card.querySelector("[data-all]");
+  if (all) all.onchange = () => {
+    if (!all.value) return;
+    card.querySelectorAll("[data-line]").forEach((sel) => { sel.value = all.value; });
+  };
+
   const accept = card.querySelector("[data-accept]");
   if (accept) accept.onclick = async () => {
-    accept.disabled = true; showErr(""); showOk("");
+    showErr(""); showOk("");
+    const selects = [...card.querySelectorAll("[data-line]")];
+    const blank = selects.filter((sel) => !sel.value);
+    if (blank.length) {
+      blank[0].focus();
+      return showErr(`${blank.length} line${blank.length>1?"s":""} still need a company.`);
+    }
+    accept.disabled = true;
     try {
-      const overrides = [];
-      for (const sel of card.querySelectorAll("[data-line]")) {
-        const line = (o.order_lines ?? []).find((l) => l.id === sel.dataset.line);
-        if (line && sel.value !== line.billing_entity_id) {
-          const reason = prompt(`Why is "${line.description}" moving to ${ENTITIES.find((e) => e.id === sel.value)?.display_name}?`);
-          if (!reason?.trim()) { accept.disabled = false; return showErr("An override needs a reason — nothing was changed."); }
-          overrides.push({ lineId: line.id, billingEntityId: sel.value, reason: reason.trim() });
-        }
-      }
-      const r = await api("/office/route", { orderId: o.id, overrides });
+      const r = await api("/office/assign", {
+        orderId: o.id,
+        assignments: selects.map((sel) => ({ lineId: sel.dataset.line, billingEntityId: sel.value })),
+      });
       showOk(`${o.order_no}: ${r.invoices} invoice${r.invoices>1?"s":""} created. Key the ERP numbers in below.`);
       await loadInbox();
     } catch(e){ showErr(e.message); accept.disabled = false; }
