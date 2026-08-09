@@ -29,15 +29,15 @@ the same pattern the delivery app uses for `/driver/` and `/admin/`.
 
 Sales order entry is Phase 2 and will land at `/sales/`.
 
-## Before this runs
+## Backend
 
-Every app has a placeholder at the top of its script:
+All three apps point at the wholesale Supabase project:
 
 ```js
-const API = "https://PROJECT_REF.supabase.co/functions/v1/api";
+const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
 ```
 
-Replace `PROJECT_REF` in all three once the Supabase project exists.
+Project `sihvyglufmftrpwogbeq` — FitFuel org, South Asia (Mumbai), chosen for latency from Dubai.
 
 ## Still to build (Phase 1)
 
