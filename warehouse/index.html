@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#110744">
+<title>FitFuel Wholesale — Warehouse</title>
+<link rel="manifest" href="warehouse.webmanifest">
+<link rel="apple-touch-icon" href="../icon-512.png">
+<style>
+:root{
+  --ink-deep:#121723; --subtle:#96A4B6; --violet:#3A34D2; --indigo:#110744;
+  --ok:#34A853; --warn:#EFB34C; --bad:#E84545;
+  --bg:#fff; --bg-2:#EEF5F7; --line:#E5E5E5; --r:8px; --r-pill:60px;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--font);background:var(--bg-2);color:var(--ink-deep)}
+header{background:var(--indigo);color:#fff;padding:14px 20px;display:flex;
+  align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:-.3px}
+header .who{font-size:12px;opacity:.75}
+main{padding:20px;max-width:860px;margin:0 auto}
+.card{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px}
+label{display:block;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;
+  color:var(--subtle);margin-bottom:6px}
+input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);
+  font-size:16px;font-family:inherit;background:var(--bg);color:var(--ink-deep)}
+button{border:0;border-radius:var(--r-pill);padding:11px 18px;font-size:14px;font-weight:700;
+  font-family:inherit;background:#1E1E1E;color:#fff;cursor:pointer}
+button.sec{background:transparent;color:var(--ink-deep);border:1px solid var(--line)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:var(--r-pill)}
+.p-acc{background:rgba(58,52,210,.10);color:var(--violet)}
+.p-ok{background:rgba(52,168,83,.12);color:var(--ok)}
+.p-warn{background:rgba(239,179,76,.16);color:#9A6B10}
+.muted{color:var(--subtle);font-size:13px}
+.mono{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.err{background:rgba(232,69,69,.10);color:var(--bad);padding:10px 12px;border-radius:var(--r);
+  font-size:13px;margin-bottom:14px}
+.hide{display:none}
+h2{font-size:16px;margin:0 0 12px;letter-spacing:-.4px}
+.pick{display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:10px 0;border-bottom:1px dashed #F0F1F3}
+.pick:last-of-type{border-bottom:0}
+.pick .qty{width:92px;flex:none}
+.short{border-color:var(--warn)!important}
+</style>
+</head>
+<body>
+
+<header>
+  <div><h1>Warehouse</h1><div class="who" id="who"></div></div>
+  <button class="sec hide" id="out" style="color:#fff;border-color:rgba(255,255,255,.3);padding:8px 14px;font-size:13px">Sign out</button>
+</header>
+
+<main>
+  <div id="err" class="err hide"></div>
+
+  <section id="login" class="card" style="max-width:380px">
+    <label for="u">Username</label>
+    <input id="u" autocapitalize="none" autocorrect="off">
+    <div style="height:10px"></div>
+    <label for="p">Password</label>
+    <input id="p" type="password">
+    <div style="height:14px"></div>
+    <button id="go" style="width:100%">Sign in</button>
+  </section>
+
+  <section id="queue" class="hide"></section>
+</main>
+
+<script>
+// TODO: set after the Supabase project exists.
+const API = "https://PROJECT_REF.supabase.co/functions/v1/api";
+
+const $ = (id) => document.getElementById(id);
+const T = {
+  get token(){ return localStorage.getItem("ff_wh_wh_token"); },
+  set token(v){ v ? localStorage.setItem("ff_wh_wh_token", v) : localStorage.removeItem("ff_wh_wh_token"); },
+  get user(){ try { return JSON.parse(localStorage.getItem("ff_wh_wh_user")||"null"); } catch { return null; } },
+  set user(v){ v ? localStorage.setItem("ff_wh_wh_user", JSON.stringify(v)) : localStorage.removeItem("ff_wh_wh_user"); },
+};
+const showErr = (m) => { const e=$("err"); e.textContent=m; e.classList.toggle("hide", !m); };
+
+async function api(path, body){
+  const res = await fetch(API + path, {
+    method: body ? "POST" : "GET",
+    headers: { "Content-Type":"application/json", ...(T.token ? { Authorization:"Bearer "+T.token } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || `request failed (${res.status})`);
+  return d;
+}
+
+$("go").onclick = async () => {
+  showErr(""); $("go").disabled = true;
+  try {
+    const r = await api("/login", { username:$("u").value.trim().toLowerCase(), password:$("p").value });
+    if (!["warehouse","admin"].includes(r.user.role)) throw new Error("This app is for warehouse staff.");
+    T.token = r.token; T.user = r.user; $("p").value = "";
+    await boot();
+  } catch(e){ showErr(e.message); } finally { $("go").disabled = false; }
+};
+$("out").onclick = () => { T.token=null; T.user=null; location.reload(); };
+
+async function boot(){
+  if (!T.token){ $("login").classList.remove("hide"); $("queue").classList.add("hide"); $("out").classList.add("hide"); return; }
+  $("login").classList.add("hide"); $("out").classList.remove("hide");
+  $("who").textContent = T.user?.name ?? "";
+  await loadQueue();
+}
+
+async function loadQueue(){
+  const el = $("queue"); el.classList.remove("hide");
+  el.innerHTML = `<p class="muted">Loading…</p>`;
+  try {
+    const { orders } = await api("/warehouse/queue");
+    if (!orders.length){ el.innerHTML = `<div class="card"><p class="muted">Nothing waiting. All caught up.</p></div>`; return; }
+
+    el.innerHTML = `<h2>${orders.length} order${orders.length>1?"s":""} in the queue</h2>` + orders.map((o) => `
+      <div class="card" data-order="${o.id}">
+        <div class="row" style="justify-content:space-between">
+          <div>
+            <div style="font-weight:700">${o.order_no} · ${o.customers?.name ?? "—"}</div>
+            <div class="muted">${o.customers?.area ?? ""}</div>
+          </div>
+          <span class="pill p-acc">${o.status}</span>
+        </div>
+
+        <div style="margin-top:12px">
+          ${(o.order_lines ?? []).map((l) => `
+            <div class="pick">
+              <div>
+                <div style="font-weight:600;font-size:14px">${l.description}</div>
+                <div class="muted">ordered <span class="mono">${Number(l.qty_ordered)}</span> ${l.unit ?? ""}</div>
+              </div>
+              <input class="qty mono" type="number" inputmode="decimal"
+                     data-line="${l.id}" value="${l.qty_confirmed ?? l.qty_ordered}"
+                     max="${l.qty_ordered}" min="0">
+            </div>`).join("")}
+        </div>
+
+        <div class="row" style="margin-top:14px">
+          <button data-confirm="${o.id}">Confirm availability</button>
+          <select data-driver="${o.id}" style="width:auto;min-width:170px">
+            <option value="">Assign driver…</option>
+            <!-- TODO Phase 1: populate from /admin/staff?role=driver -->
+          </select>
+          <button class="sec" data-assign="${o.id}">Assign &amp; stage</button>
+        </div>
+      </div>`).join("");
+
+    // Shorting a line bounces the order back to the office to amend the ERP document.
+    el.querySelectorAll("[data-confirm]").forEach((b) => b.onclick = async () => {
+      showErr("");
+      const card = b.closest("[data-order]");
+      const lines = [...card.querySelectorAll("[data-line]")].map((i) => ({
+        lineId: i.dataset.line,
+        qtyConfirmed: Number(i.value),
+        shortReason: Number(i.value) < Number(i.max) ? "short at pick" : null,
+      }));
+      try {
+        const r = await api("/warehouse/confirm", { orderId: b.dataset.confirm, lines });
+        if (r.short) showErr("Short delivery — sent back to the office to amend the invoice.");
+        await loadQueue();
+      } catch(e){ showErr(e.message); }
+    });
+
+    el.querySelectorAll("[data-assign]").forEach((b) => b.onclick = async () => {
+      showErr("");
+      const sel = el.querySelector(`[data-driver="${b.dataset.assign}"]`);
+      if (!sel.value) return showErr("Pick a driver first.");
+      try { await api("/warehouse/assign", { orderId: b.dataset.assign, driverUsername: sel.value }); await loadQueue(); }
+      catch(e){ showErr(e.message); }
+    });
+
+  } catch(e){ showErr(e.message); el.innerHTML = ""; }
+}
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#110744">
+<title>FitFuel Wholesale — Driver</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+:root{
+  --ink:#1E1E1E; --ink-deep:#121723; --slate:#3F4E6D; --subtle:#96A4B6;
+  --violet:#3A34D2; --lime:#D8FD80; --indigo:#110744;
+  --ok:#34A853; --warn:#EFB34C; --bad:#E84545;
+  --bg:#fff; --bg-2:#EEF5F7; --card:#FAFAFB; --line:#E5E5E5;
+  --r:8px; --r-pill:60px;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--font);background:var(--bg-2);color:var(--ink-deep);
+  -webkit-font-smoothing:antialiased;padding-bottom:env(safe-area-inset-bottom)}
+header{background:var(--indigo);color:#fff;padding:calc(12px + env(safe-area-inset-top)) 16px 12px;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:5}
+header .who{font-size:12px;opacity:.75}
+header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:-.3px}
+main{padding:16px;max-width:640px;margin:0 auto}
+.card{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px}
+label{display:block;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;
+  color:var(--subtle);margin-bottom:6px}
+input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:var(--r);
+  font-size:16px;font-family:inherit;background:var(--bg);color:var(--ink-deep)}
+button{border:0;border-radius:var(--r-pill);padding:13px 18px;font-size:15px;font-weight:700;
+  font-family:inherit;background:var(--ink);color:#fff;width:100%;cursor:pointer}
+button.sec{background:transparent;color:var(--ink-deep);border:1px solid var(--line)}
+button:disabled{opacity:.45}
+.row{display:flex;gap:8px}
+.row>*{flex:1}
+.pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:var(--r-pill)}
+.p-ok{background:rgba(52,168,83,.12);color:var(--ok)}
+.p-warn{background:rgba(239,179,76,.16);color:#9A6B10}
+.p-todo{background:rgba(58,52,210,.10);color:var(--violet)}
+.drop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;cursor:pointer}
+.drop .nm{font-weight:700;font-size:15px}
+.drop .sub{font-size:12px;color:var(--subtle);margin-top:2px}
+.muted{color:var(--subtle);font-size:13px}
+.err{background:rgba(232,69,69,.10);color:var(--bad);padding:10px 12px;border-radius:var(--r);
+  font-size:13px;margin-bottom:12px}
+.inv{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;
+  border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px}
+.inv .no{font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:700}
+canvas#sig{width:100%;height:150px;border:1px dashed var(--line);border-radius:var(--r);
+  background:var(--bg);touch-action:none;display:block}
+.hide{display:none}
+h2{font-size:15px;margin:18px 0 8px;letter-spacing:-.3px}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Deliveries</h1>
+    <div class="who" id="who"></div>
+  </div>
+  <button class="sec hide" id="out" style="width:auto;padding:8px 14px;font-size:13px;color:#fff;border-color:rgba(255,255,255,.3)">Sign out</button>
+</header>
+
+<main>
+  <div id="err" class="err hide"></div>
+
+  <!-- login -->
+  <section id="login" class="card">
+    <label for="u">Username</label>
+    <input id="u" autocapitalize="none" autocorrect="off" autocomplete="username">
+    <div style="height:10px"></div>
+    <label for="p">Password</label>
+    <input id="p" type="password" autocomplete="current-password">
+    <div style="height:14px"></div>
+    <button id="go">Sign in</button>
+  </section>
+
+  <!-- run list -->
+  <section id="run" class="hide"></section>
+
+  <!-- drop detail -->
+  <section id="detail" class="hide"></section>
+</main>
+
+<script>
+// ---------------------------------------------------------------------------
+// TODO: set after the Supabase project exists.
+const API = "https://PROJECT_REF.supabase.co/functions/v1/api";
+// ---------------------------------------------------------------------------
+
+const $ = (id) => document.getElementById(id);
+const store = {
+  get token(){ return localStorage.getItem("ff_wh_token"); },
+  set token(v){ v ? localStorage.setItem("ff_wh_token", v) : localStorage.removeItem("ff_wh_token"); },
+  get user(){ try { return JSON.parse(localStorage.getItem("ff_wh_user")||"null"); } catch { return null; } },
+  set user(v){ v ? localStorage.setItem("ff_wh_user", JSON.stringify(v)) : localStorage.removeItem("ff_wh_user"); },
+};
+
+function showErr(msg){ const e=$("err"); e.textContent=msg; e.classList.toggle("hide", !msg); }
+
+async function api(path, body){
+  const res = await fetch(API + path, {
+    method: body ? "POST" : "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...(store.token ? { Authorization: "Bearer " + store.token } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `request failed (${res.status})`);
+  return data;
+}
+
+// ---- login ----------------------------------------------------------------
+$("go").onclick = async () => {
+  showErr("");
+  $("go").disabled = true;
+  try {
+    const r = await api("/login", { username: $("u").value.trim().toLowerCase(), password: $("p").value });
+    if (r.user.role !== "driver") throw new Error("This app is for drivers. Use the office or warehouse app.");
+    store.token = r.token; store.user = r.user;
+    $("p").value = "";
+    await boot();
+  } catch (e) { showErr(e.message); }
+  finally { $("go").disabled = false; }
+};
+
+$("out").onclick = () => { store.token = null; store.user = null; location.reload(); };
+
+// ---- run list -------------------------------------------------------------
+async function boot(){
+  if (!store.token) {
+    $("login").classList.remove("hide");
+    $("run").classList.add("hide"); $("detail").classList.add("hide"); $("out").classList.add("hide");
+    return;
+  }
+  $("login").classList.add("hide"); $("out").classList.remove("hide");
+  $("who").textContent = store.user ? `${store.user.name}` : "";
+  await loadRun();
+}
+
+async function loadRun(){
+  $("detail").classList.add("hide");
+  const el = $("run"); el.classList.remove("hide");
+  el.innerHTML = `<p class="muted">Loading today's run…</p>`;
+  try {
+    const { drops } = await api("/driver/run");
+    if (!drops.length) { el.innerHTML = `<div class="card"><p class="muted">Nothing assigned to you today.</p></div>`; return; }
+    el.innerHTML = `<h2>${drops.length} drop${drops.length>1?"s":""} today</h2>` + drops.map((d, i) => {
+      const o = d.orders, c = o.customers, n = (o.invoices||[]).length;
+      const done = d.status === "delivered" || d.status === "partial";
+      return `<div class="card drop" data-id="${d.id}">
+        <div>
+          <div class="nm">${i+1}. ${c?.name ?? "—"}</div>
+          <div class="sub">${o.order_no} · ${n} invoice${n===1?"":"s"} · ${c?.area ?? ""}</div>
+        </div>
+        <span class="pill ${done ? "p-ok" : "p-todo"}">${done ? "Done" : "To do"}</span>
+      </div>`;
+    }).join("");
+    el.querySelectorAll(".drop").forEach((n) =>
+      n.onclick = () => openDrop(drops.find((d) => d.id === n.dataset.id)));
+  } catch (e) { showErr(e.message); el.innerHTML = ""; }
+}
+
+// ---- drop detail ----------------------------------------------------------
+// The invoice checklist is the point: one stamped photo per invoice, and the API
+// refuses to close the drop while any is missing.
+const proofs = new Map();   // invoiceId -> photoPath (set after upload)
+
+function openDrop(d){
+  proofs.clear();
+  const o = d.orders, c = o.customers, invoices = o.invoices || [];
+  $("run").classList.add("hide");
+  const el = $("detail"); el.classList.remove("hide");
+
+  el.innerHTML = `
+    <button class="sec" id="back" style="margin-bottom:12px">← Back to run</button>
+    <div class="card">
+      <label>Delivering to</label>
+      <div style="font-weight:700;font-size:16px">${c?.name ?? "—"}</div>
+      <div class="muted" style="margin-top:4px">${o.order_no}${c?.address ? " · " + c.address : ""}</div>
+    </div>
+
+    <div class="card">
+      <label>Invoices on this drop — every one needs a stamped photo</label>
+      <div id="invs">${invoices.map((v) => `
+        <div class="inv" data-inv="${v.id}">
+          <div>
+            <div class="no">${v.erp_invoice_no ?? "(no number yet)"}</div>
+            <div class="muted">${v.erp} · AED ${Number(v.amount ?? 0).toFixed(2)}</div>
+          </div>
+          <button class="sec shoot" data-inv="${v.id}" style="width:auto;padding:8px 14px;font-size:13px">Photo</button>
+        </div>`).join("")}</div>
+      <input type="file" accept="image/*" capture="environment" id="cam" class="hide">
+    </div>
+
+    <div class="card">
+      <label>Customer signature</label>
+      <canvas id="sig"></canvas>
+      <div style="height:8px"></div>
+      <button class="sec" id="clearsig">Clear signature</button>
+    </div>
+
+    <div class="card">
+      <label for="lpo">Customer LPO reference</label>
+      <input id="lpo" placeholder="Optional" value="${o.lpo_reference ?? ""}">
+    </div>
+
+    <div class="card">
+      <label>Outcome</label>
+      <div class="row">
+        <button id="deliver">Delivered</button>
+        <button class="sec" id="partial">Short</button>
+      </div>
+      <div style="height:8px"></div>
+      <div class="row">
+        <button class="sec" id="refused">Refused</button>
+        <button class="sec" id="resched">Reschedule</button>
+      </div>
+    </div>`;
+
+  $("back").onclick = loadRun;
+  initSignature();
+
+  // TODO Phase 1: downscale to ~150 kB and upload to the wholesale-docs bucket,
+  // then store the returned path. Mirrors the delivery app's proof upload.
+  el.querySelectorAll(".shoot").forEach((b) => b.onclick = () => {
+    const invId = b.dataset.inv;
+    const cam = $("cam");
+    cam.onchange = async () => {
+      if (!cam.files?.[0]) return;
+      proofs.set(invId, `PENDING_UPLOAD/${invId}`);   // placeholder until upload lands
+      b.textContent = "✓ Taken";
+      b.classList.remove("sec");
+    };
+    cam.click();
+  });
+
+  const send = (status) => async () => {
+    showErr("");
+    try {
+      const pos = await new Promise((res) =>
+        navigator.geolocation
+          ? navigator.geolocation.getCurrentPosition((p) => res(p), () => res(null), { timeout: 5000 })
+          : res(null));
+      await api("/driver/deliver", {
+        deliveryId: d.id, status,
+        signaturePath: signatureDrawn ? "PENDING_UPLOAD/signature" : null,
+        proofs: [...proofs.entries()].map(([invoiceId, photoPath]) => ({ invoiceId, photoPath })),
+        lpoReference: $("lpo").value.trim() || null,
+        lat: pos?.coords.latitude, lng: pos?.coords.longitude, accuracy: pos?.coords.accuracy,
+      });
+      await loadRun();
+    } catch (e) { showErr(e.message); }
+  };
+  $("deliver").onclick = send("delivered");
+  $("partial").onclick  = send("partial");
+  $("refused").onclick  = send("refused");
+  $("resched").onclick  = send("rescheduled");
+}
+
+// ---- signature pad --------------------------------------------------------
+let signatureDrawn = false;
+function initSignature(){
+  const cv = $("sig"); if (!cv) return;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = cv.offsetWidth * dpr; cv.height = cv.offsetHeight * dpr;
+  const ctx = cv.getContext("2d");
+  ctx.scale(dpr, dpr); ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#121723";
+  let drawing = false;
+  const pt = (e) => {
+    const r = cv.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX - r.left, y: t.clientY - r.top };
+  };
+  const start = (e) => { drawing = true; signatureDrawn = true; const p = pt(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); };
+  const move  = (e) => { if (!drawing) return; const p = pt(e); ctx.lineTo(p.x, p.y); ctx.stroke(); e.preventDefault(); };
+  const end   = () => { drawing = false; };
+  cv.addEventListener("pointerdown", start); cv.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", end);
+  $("clearsig").onclick = () => { ctx.clearRect(0, 0, cv.width, cv.height); signatureDrawn = false; };
+}
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+boot();
+</script>
+</body>
+</html>

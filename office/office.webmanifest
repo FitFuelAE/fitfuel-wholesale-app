@@ -1,0 +1,12 @@
+{
+  "name": "FitFuel Wholesale — Office",
+  "short_name": "WS Office",
+  "start_url": ".",
+  "scope": "/office/",
+  "display": "standalone",
+  "background_color": "#110744",
+  "theme_color": "#110744",
+  "icons": [
+    { "src": "../icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
