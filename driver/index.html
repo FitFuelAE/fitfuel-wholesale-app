@@ -98,6 +98,12 @@ h2{font-size:15px;margin:18px 0 8px;letter-spacing:-.3px}
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
 
 const $ = (id) => document.getElementById(id);
+function sessionExpired(){
+  for (const id of ["run","detail","inbox","queue","money","people","board","upload","tabs","out"]) {
+    document.getElementById(id)?.classList.add("hide");
+  }
+  document.getElementById("login")?.classList.remove("hide");
+}
 const store = {
   get token(){ return localStorage.getItem("ff_wh_token"); },
   set token(v){ v ? localStorage.setItem("ff_wh_token", v) : localStorage.removeItem("ff_wh_token"); },
@@ -114,6 +120,13 @@ async function api(path, body){
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && store.token) {
+    // The token is gone, expired, or was minted before a change to its format.
+    // Drop it and ask for a fresh sign-in rather than showing a bare error.
+    store.token = null; store.user = null;
+    sessionExpired();
+    throw new Error("Your session has ended — please sign in again.");
+  }
   if (!res.ok) throw new Error(data.error || `request failed (${res.status})`);
   return data;
 }
