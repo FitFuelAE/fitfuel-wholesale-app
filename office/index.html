@@ -67,6 +67,24 @@ h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
 .linebox .line:last-child{padding-bottom:10px}
 .lineno{display:inline-block;min-width:22px;color:var(--subtle);font-family:ui-monospace,Menlo,monospace;font-size:12px}
 .danger{color:var(--bad);border-color:rgba(232,69,69,.4)}
+details.ord{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);margin-bottom:12px}
+details.ord[open]{border-color:var(--violet)}
+details.ord>summary{list-style:none;cursor:pointer;padding:14px 18px;display:flex;
+  justify-content:space-between;align-items:center;gap:12px}
+details.ord>summary::-webkit-details-marker{display:none}
+details.ord>summary:hover{background:var(--bg-2)}
+details.ord>summary .chev{color:var(--subtle);font-size:12px;transition:transform .15s}
+details.ord[open]>summary .chev{transform:rotate(90deg)}
+details.ord .body{padding:0 18px 18px}
+.sumline{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sumline .t{font-weight:700;font-size:15px}
+.sumline .s{font-size:12.5px;color:var(--subtle)}
+.needs{background:rgba(239,179,76,.16);color:#8A5D08}
+.doc{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin-bottom:8px}
+.doc.bad{border-color:var(--bad);background:rgba(232,69,69,.04)}
+.doc.done{border-color:var(--ok);background:rgba(52,168,83,.05)}
+.doc .hd{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.doc .fn{font-size:12px;color:var(--subtle);font-family:ui-monospace,Menlo,monospace}
 .danger:hover{background:rgba(232,69,69,.06)}
 .cancelled{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin-bottom:8px;
   display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--bg)}
@@ -107,19 +125,19 @@ h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
   <section id="upload" class="card hide">
     <h2>Add a document</h2>
     <p class="muted" style="margin:-6px 0 14px">
-      Upload the PDF straight from Zoho, Facts, Focus or Tally. Everything on it is
+      Upload one or several PDFs straight from Zoho, Facts, Focus or Tally. Everything on it is
       read for you — company, customer, items and totals.
       <strong>From Zoho use Download PDF, not Print</strong>, or there is no text to read.
     </p>
     <div class="row">
-      <button id="pick">Choose PDF</button>
+      <button id="pick">Choose PDFs</button>
       <span class="muted" id="pickstate"></span>
     </div>
     <div id="review" class="hide" style="margin-top:16px"></div>
   </section>
 
   <section id="inbox" class="hide"></section>
-  <input type="file" accept="application/pdf" id="docpick" class="hide">
+  <input type="file" accept="application/pdf" id="docpick" multiple class="hide">
   <input type="file" accept="application/pdf,image/*" id="pdfpick" class="hide">
 </main>
 
@@ -249,17 +267,22 @@ function renderOrder(o){
   const nCo = [...groups.keys()].filter((k) => k !== "unresolved").length;
   const needsAssigning = o.status === "submitted" || !invoices.length;
 
-  return `<div class="card" data-order="${o.id}">
-    <div class="row" style="justify-content:space-between;align-items:flex-start">
-      <div>
-        <div style="font-weight:700;font-size:15px">${o.order_no} · ${o.customers?.name ?? "—"}</div>
-        <div class="muted">${o.salesman_username} · ${lines.length} line${lines.length===1?"":"s"}
-          · ${o.customers?.tax_invoice_required ? "needs tax invoice" : "no tax invoice"}
-          · ${o.customers?.payment_terms_days ? `${o.customers.payment_terms_days}-day terms` : "cash"}
-          ${o.lpo_reference ? ` · LPO ${o.lpo_reference}` : ""}</div>
-      </div>
-      <span class="pill ${needsAssigning ? "p-acc" : "p-warn"}">${needsAssigning ? "Confirm company" : "Awaiting invoice no."}</span>
-    </div>
+  const total = (o.invoices ?? []).reduce((t, v) => t + Number(v.amount ?? 0), 0);
+  // Collapsed by default — an inbox of 30 orders should be scannable. Anything
+  // the warehouse sent back opens on its own, because it needs attention.
+  return `<details class="ord" data-order="${o.id}"${o.hold_reason ? " open" : ""}>
+    <summary>
+      <span class="chev">▶</span>
+      <span class="sumline" style="flex:1">
+        <span class="t">${o.source_doc_no ?? o.order_no} · ${o.customers?.name ?? "—"}</span>
+        <span class="s">${lines.length} line${lines.length===1?"":"s"}${total ? ` · AED ${aed(total)}` : ""}
+          ${o.source_erp ? `· ${o.source_erp.toUpperCase()}` : ""}
+          ${o.lpo_reference ? `· LPO ${o.lpo_reference}` : ""}</span>
+      </span>
+      <span class="pill ${o.hold_reason ? "needs" : needsAssigning ? "p-acc" : "p-warn"}">${
+        o.hold_reason ? "Back from warehouse" : needsAssigning ? "Confirm company" : "Awaiting invoice no."}</span>
+    </summary>
+    <div class="body">
 
     ${o.hold_reason ? `
       <div class="held">
@@ -349,7 +372,8 @@ function renderOrder(o){
           </div>
         </div>`;
       }).join("")}`}
-  </div>`;
+    </div>
+  </details>`;
 }
 
 // Documents withdrawn in the last fortnight — a mistaken cancel is itself an
@@ -535,104 +559,117 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs";
 
 const $$ = (id) => document.getElementById(id);
 const aed2 = (n) => Number(n || 0).toFixed(2);
-let pending = null;   // { doc, base64 }
+let pending = [];   // one entry per chosen file
 
 $$("pick").onclick = () => $$("docpick").click();
 
 $$("docpick").onchange = async () => {
-  const file = $$("docpick").files?.[0];
-  if (!file) return;
-  $$("pickstate").textContent = "Reading…";
-  $$("review").classList.add("hide");
-  window.ffShowErr?.("");
-  try {
-    const buf = await file.arrayBuffer();
-    const lines = await extractLines(buf.slice(0), pdfjsLib);
-    const { ok, doc, reason } = parseDocument(lines);
-    if (!ok) { $$("pickstate").textContent = ""; window.ffShowErr?.(reason); return; }
+  const files = [...($$("docpick").files || [])];
+  if (!files.length) return;
+  window.ffShowErr?.(""); window.ffShowOk?.("");
+  pending = [];
+  $$("review").classList.remove("hide");
 
-    const b64 = await new Promise((res, rej) => {
-      const fr = new FileReader();
-      fr.onload = () => res(String(fr.result).split(",")[1]);
-      fr.onerror = () => rej(new Error("Could not read the file."));
-      fr.readAsDataURL(file);
-    });
-    pending = { doc, base64: b64 };
-    $$("pickstate").textContent = file.name;
-    renderReview(doc);
-  } catch (e) {
-    $$("pickstate").textContent = "";
-    window.ffShowErr?.(`Could not read that PDF — ${e.message}`);
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    $$("pickstate").textContent = `Reading ${i + 1} of ${files.length}…`;
+    try {
+      const buf = await f.arrayBuffer();
+      const lines = await extractLines(buf.slice(0), pdfjsLib);
+      const { ok, doc, reason } = parseDocument(lines);
+      const b64 = ok ? await toBase64(f) : null;
+      pending.push({ file: f.name, ok, doc, reason, base64: b64, saved: false });
+    } catch (e) {
+      pending.push({ file: f.name, ok: false, reason: `Could not read this PDF — ${e.message}` });
+    }
+    renderBatch();
   }
+  $$("pickstate").textContent = `${files.length} file${files.length === 1 ? "" : "s"}`;
 };
 
-function renderReview(doc) {
+const toBase64 = (file) => new Promise((res, rej) => {
+  const fr = new FileReader();
+  fr.onload = () => res(String(fr.result).split(",")[1]);
+  fr.onerror = () => rej(new Error("Could not read the file."));
+  fr.readAsDataURL(file);
+});
+
+// One row per file, so a batch shows plainly which are ready, which need a
+// company chosen, and which were refused and why.
+function renderBatch() {
   const el = $$("review");
-  el.classList.remove("hide");
-  const needsCompany = !doc.sellerTrn;
-  const rows = doc.lines.map((l, i) => `
-    <div class="line">
-      <span><span class="lineno">${l.sl ?? i + 1}</span>${l.description}${l.freeOfCharge ? ` <span class="pill p-neu">free of charge</span>` : ""}</span>
-      <span class="mono">${Number(l.qty)} ${l.rate ? `× ${aed2(l.rate)}` : ""} ${l.amount ? `= ${aed2(l.amount)}` : ""}</span>
-    </div>`).join("");
-
-  el.innerHTML = `
-    <div class="split">
-      <strong>${doc.erp.toUpperCase()} ${doc.docType === "invoice" ? "tax invoice" : "sales order"} ${doc.docNo ?? ""}</strong>
-      — read from the document. Check it before saving.
-    </div>
-    <div class="f3" style="margin-bottom:12px">
-      <div><label>Customer</label><div class="inp" style="border:1px solid var(--line);border-radius:var(--r);padding:10px 12px">${doc.customerName ?? "—"}</div></div>
-      <div><label>Customer TRN</label><div class="mono" style="border:1px solid var(--line);border-radius:var(--r);padding:10px 12px">${doc.customerTrn ?? "—"}</div></div>
-      <div><label>Date</label><div style="border:1px solid var(--line);border-radius:var(--r);padding:10px 12px">${doc.date ?? "—"}</div></div>
-    </div>
-
-    ${needsCompany ? `
-      <label for="pickco">This document names no company — which one issued it?</label>
-      <select id="pickco">
-        <option value="">Choose…</option>
-        ${(window.ENTITIES || []).map((e) => `<option value="${e.id}">${e.display_name} · ${e.erp.toUpperCase()}</option>`).join("")}
-      </select>
-      <div style="height:12px"></div>`
-    : `<div class="muted" style="margin-bottom:12px">Company identified from TRN <span class="mono">${doc.sellerTrn}</span>.</div>`}
-
-    <label>${doc.lines.length} line${doc.lines.length === 1 ? "" : "s"}${doc.lines.length > 10 ? " — scroll to see them all" : ""}</label>
-    <div class="linebox">${rows}</div>
-
-    <div class="row" style="justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-      <span class="muted">Lines add up to <span class="mono">${aed2(doc.linesSum)}</span>, matching the document ✓</span>
-      <strong class="mono">Total AED ${aed2(doc.total)}</strong>
-    </div>
+  const readyCount = pending.filter((d) => d.ok && !d.saved).length;
+  el.innerHTML = pending.map((d, i) => {
+    if (!d.ok) return `<div class="doc bad">
+      <div class="hd"><strong>Not saved</strong><span class="fn">${d.file}</span></div>
+      <div class="muted" style="margin-top:6px">${d.reason}</div></div>`;
+    if (d.saved) return `<div class="doc done">
+      <div class="hd"><strong>✓ ${d.doc.docNo}</strong><span class="fn">${d.file}</span></div>
+      <div class="muted" style="margin-top:4px">${d.savedNote}</div></div>`;
+    const needsCompany = !d.doc.sellerTrn;
+    return `<div class="doc" data-i="${i}">
+      <div class="hd">
+        <strong>${d.doc.erp.toUpperCase()} ${d.doc.docType === "invoice" ? "invoice" : "sales order"} ${d.doc.docNo ?? ""}</strong>
+        <span class="fn">${d.file}</span>
+      </div>
+      <div class="muted" style="margin:6px 0">${d.doc.customerName ?? "—"} · ${d.doc.lines.length} lines ·
+        lines add up to ${aed2(d.doc.linesSum)}, matching ✓ · <strong>AED ${aed2(d.doc.total)}</strong></div>
+      ${needsCompany ? `<label>This document names no company — which one issued it?</label>
+        <select data-co="${i}">
+          <option value="">Choose…</option>
+          ${(window.ENTITIES || []).map((e) => `<option value="${e.id}">${e.display_name} · ${e.erp.toUpperCase()}</option>`).join("")}
+        </select>` : `<div class="muted">Company identified from TRN ${d.doc.sellerTrn}.</div>`}
+      <details style="margin-top:8px"><summary class="muted" style="cursor:pointer">Show the ${d.doc.lines.length} lines</summary>
+        <div class="linebox" style="margin-top:8px">${d.doc.lines.map((l, n) => `
+          <div class="line"><span><span class="lineno">${l.sl ?? n + 1}</span>${l.description}</span>
+          <span class="mono">${Number(l.qty)} ${l.rate ? `× ${aed2(l.rate)}` : ""} ${l.amount ? `= ${aed2(l.amount)}` : ""}</span></div>`).join("")}</div>
+      </details>
+    </div>`;
+  }).join("") + `
     <div class="row" style="margin-top:14px">
-      <button id="saveDoc">Save to the warehouse queue</button>
-      <button class="sec" id="cancelDoc">Cancel</button>
+      <button id="saveAll"${readyCount ? "" : " disabled"}>Save ${readyCount || ""} to the warehouse queue</button>
+      <button class="sec" id="clearBatch">Clear</button>
     </div>`;
 
-  $$("cancelDoc").onclick = () => {
-    pending = null; el.classList.add("hide");
+  $$("clearBatch").onclick = () => {
+    pending = []; el.classList.add("hide");
     $$("pickstate").textContent = ""; $$("docpick").value = "";
   };
-
-  $$("saveDoc").onclick = async () => {
-    const btn = $$("saveDoc"); btn.disabled = true; btn.textContent = "Saving…";
-    window.ffShowErr?.(""); window.ffShowOk?.("");
-    try {
-      const billingEntityId = needsCompany ? $$("pickco").value : undefined;
-      if (needsCompany && !billingEntityId) throw new Error("Choose which company issued this document.");
-      const r = await window.ffApi("/office/ingest", {
-        doc: pending.doc, billingEntityId,
-        pdfBase64: pending.base64, contentType: "application/pdf",
-      });
-      window.ffShowOk?.(`${r.docNo} saved for ${r.customer} — ${r.lines} lines.` +
-        (r.documentDiscarded ? " The source file was not stored for this company." : ""));
-      pending = null; el.classList.add("hide");
-      $$("pickstate").textContent = ""; $$("docpick").value = "";
-      await window.ffReload?.();
-    } catch (e) {
-      window.ffShowErr?.(e.message);
-    } finally { btn.disabled = false; btn.textContent = "Save to the warehouse queue"; }
-  };
+  $$("saveAll").onclick = saveAll;
 }
+
+async function saveAll() {
+  const btn = $$("saveAll"); btn.disabled = true;
+  window.ffShowErr?.(""); window.ffShowOk?.("");
+  let saved = 0, failed = 0;
+  for (let i = 0; i < pending.length; i++) {
+    const d = pending[i];
+    if (!d.ok || d.saved) continue;
+    const sel = document.querySelector(`[data-co="${i}"]`);
+    if (!d.doc.sellerTrn && !sel?.value) {
+      d.ok = false; d.reason = "Choose which company issued this document, then save again.";
+      failed++; continue;
+    }
+    btn.textContent = `Saving ${d.doc.docNo}…`;
+    try {
+      const r = await window.ffApi("/office/ingest", {
+        doc: d.doc, billingEntityId: sel?.value || undefined,
+        pdfBase64: d.base64, contentType: "application/pdf",
+      });
+      d.saved = true;
+      d.savedNote = `${r.customer} — ${r.lines} lines` +
+        (r.documentDiscarded ? " · source file not stored for this company" : "") +
+        (r.resolvedHold ? " · amendment accepted" : "");
+      saved++;
+    } catch (e) {
+      d.ok = false; d.reason = e.message; failed++;
+    }
+    renderBatch();
+  }
+  window.ffShowOk?.(`${saved} saved${failed ? `, ${failed} not saved — see below` : ""}.`);
+  if (saved) await window.ffReload?.();
+}
+
 </script>
 </body>
 </html>

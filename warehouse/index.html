@@ -53,6 +53,20 @@ h2{font-size:16px;margin:0 0 12px;letter-spacing:-.4px}
 .big{font-size:24px;font-weight:900;letter-spacing:-.8px}
 .xfer{border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:10px}
 .xfer.wait{border-color:var(--violet);background:rgba(58,52,210,.04)}
+details.ord{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);margin-bottom:12px}
+details.ord[open]{border-color:var(--violet)}
+details.ord>summary{list-style:none;cursor:pointer;padding:14px 16px;display:flex;
+  justify-content:space-between;align-items:center;gap:12px}
+details.ord>summary::-webkit-details-marker{display:none}
+details.ord>summary:hover{background:var(--bg-2)}
+details.ord>summary .chev{color:var(--subtle);font-size:12px;transition:transform .15s}
+details.ord[open]>summary .chev{transform:rotate(90deg)}
+details.ord .body{padding:0 16px 16px}
+.sumline{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sumline .t{font-weight:700;font-size:15px}
+.sumline .s{font-size:12.5px;color:var(--subtle)}
+.linebox{max-height:min(46vh,380px);overflow-y:auto;border:1px solid var(--line);
+  border-radius:var(--r);padding:2px 10px;background:var(--bg)}
 </style>
 </head>
 <body>
@@ -257,16 +271,18 @@ async function loadQueue(){
     if (!orders.length){ el.innerHTML = `<div class="card"><p class="muted">Nothing waiting. All caught up.</p></div>`; return; }
 
     el.innerHTML = `<h2>${orders.length} order${orders.length>1?"s":""} in the queue</h2>` + orders.map((o) => `
-      <div class="card" data-order="${o.id}">
-        <div class="row" style="justify-content:space-between">
-          <div>
-            <div style="font-weight:700">${o.order_no} · ${o.customers?.name ?? "—"}</div>
-            <div class="muted">${o.customers?.area ?? ""}</div>
-          </div>
+      <details class="ord" data-order="${o.id}">
+        <summary>
+          <span class="chev">▶</span>
+          <span class="sumline" style="flex:1">
+            <span class="t">${o.order_no} · ${o.customers?.name ?? "—"}</span>
+            <span class="s">${(o.order_lines ?? []).length} line${(o.order_lines ?? []).length === 1 ? "" : "s"}${o.customers?.area ? ` · ${o.customers.area}` : ""}</span>
+          </span>
           <span class="pill p-acc">${o.status}</span>
-        </div>
+        </summary>
+        <div class="body">
 
-        <div style="margin-top:12px">
+        <div class="${(o.order_lines ?? []).length > 10 ? "linebox" : ""}" style="margin-top:4px">
           ${(o.order_lines ?? []).map((l) => `
             <div class="pick">
               <div>
@@ -287,7 +303,8 @@ async function loadQueue(){
           </select>
           <button class="sec" data-assign="${o.id}">Assign &amp; stage</button>
         </div>
-      </div>`).join("");
+        </div>
+      </details>`).join("");
 
     // Shorting a line bounces the order back to the office to amend the ERP document.
     el.querySelectorAll("[data-confirm]").forEach((b) => b.onclick = async () => {
