@@ -3,19 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#110744">
+<meta name="theme-color" content="#111111">
 <title>FitFuel Wholesale — Driver</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="../icon-512.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 :root{
-  --ink:#1E1E1E; --ink-deep:#121723; --subtle:#96A4B6;
-  --violet:#3A34D2; --lime:#D8FD80; --indigo:#110744;
-  --ok:#34A853; --warn:#EFB34C; --bad:#E84545;
-  --bg:#fff; --bg-2:#EEF5F7; --line:#E5E5E5;
-  --r:8px; --r-pill:60px;
-  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+  --ink:#111111; --ink-deep:#111827; --subtle:#6b7280;
+  --violet:#111111; --lime:#111111; --indigo:#111111;
+  --ok:#16a34a; --warn:#d97706; --bad:#dc2626;
+  --bg:#fff; --bg-2:#f5f6f8; --line:#e5e7eb;
+  --r:12px; --r-pill:999px;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
 }
 *{box-sizing:border-box}
 body{margin:0;font-family:var(--font);background:var(--bg-2);color:var(--ink-deep);
@@ -25,12 +25,11 @@ header{background:var(--indigo);color:#fff;padding:calc(12px + env(safe-area-ins
 header .who{font-size:12px;opacity:.75}
 header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:-.3px}
 main{padding:16px;max-width:640px;margin:0 auto}
-.card{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px}
-label{display:block;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;
-  color:var(--subtle);margin-bottom:6px}
-input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:var(--r);
-  font-size:16px;font-family:inherit;background:var(--bg);color:var(--ink-deep)}
-button{border:0;border-radius:var(--r-pill);padding:13px 18px;font-size:15px;font-weight:700;
+.card{background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+label{display:block;font-size:13px;font-weight:600;color:var(--subtle);margin:0 0 6px}
+input,select,textarea{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:var(--r);
+  font-size:17px;font-family:inherit;background:var(--bg);color:var(--ink-deep)}
+button{border:0;border-radius:12px;padding:13px 18px;font-size:15px;font-weight:700;
   font-family:inherit;background:var(--ink);color:#fff;width:100%;cursor:pointer}
 button.sec{background:transparent;color:var(--ink-deep);border:1px solid var(--line)}
 button.sm{width:auto;padding:8px 14px;font-size:13px}
@@ -38,26 +37,26 @@ button:disabled{opacity:.45}
 .row{display:flex;gap:8px}
 .row>*{flex:1}
 .pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:var(--r-pill)}
-.p-ok{background:rgba(52,168,83,.12);color:var(--ok)}
-.p-todo{background:rgba(58,52,210,.10);color:var(--violet)}
+.p-ok{background:rgba(22,163,74,.12);color:var(--ok)}
+.p-todo{background:rgba(17,17,17,.10);color:var(--violet)}
 .drop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;cursor:pointer}
 .drop .nm{font-weight:700;font-size:15px}
 .drop .sub{font-size:12px;color:var(--subtle);margin-top:2px}
 .muted{color:var(--subtle);font-size:13px}
-.err{background:rgba(232,69,69,.10);color:var(--bad);padding:10px 12px;border-radius:var(--r);
+.err{background:rgba(220,38,38,.10);color:var(--bad);padding:10px 12px;border-radius:var(--r);
   font-size:13px;margin-bottom:12px}
-.okmsg{background:rgba(52,168,83,.10);color:var(--ok);padding:10px 12px;border-radius:var(--r);
+.okmsg{background:rgba(22,163,74,.10);color:var(--ok);padding:10px 12px;border-radius:var(--r);
   font-size:13px;margin-bottom:12px}
 .inv{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;
   border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px}
-.inv.done{border-color:var(--ok);background:rgba(52,168,83,.05)}
+.inv.done{border-color:var(--ok);background:rgba(22,163,74,.05)}
 .inv .no{font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:700}
 canvas#sig{width:100%;height:150px;border:1px dashed var(--line);border-radius:var(--r);
   background:var(--bg);touch-action:none;display:block}
-.hide{display:none}
+.hide{display:none!important}
 h2{font-size:15px;margin:18px 0 8px;letter-spacing:-.3px}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
-.chip{flex:0 0 auto;padding:9px 15px;border-radius:var(--r-pill);border:1px solid var(--line);
+.chip{flex:0 0 auto;padding:9px 15px;border-radius:10px;border:1px solid var(--line);
   background:var(--bg);font-size:13px;font-weight:700;cursor:pointer;color:var(--ink-deep)}
 .chip.on{background:var(--indigo);color:#fff;border-color:var(--indigo)}
 .alloc{display:flex;align-items:center;gap:8px;margin-bottom:6px}
@@ -578,7 +577,7 @@ function initSignature(){
   // White ground first, or the JPEG encodes transparency as black.
   ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
   ctx.scale(dpr, dpr);
-  ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#121723";
+  ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#111827";
 
   let drawing = false;
   const pt = (e) => {
