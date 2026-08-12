@@ -95,6 +95,7 @@ h2{font-size:15px;margin:18px 0 8px;letter-spacing:-.3px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
+const APP_VERSION = "2026-08-12.2";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -192,7 +193,7 @@ async function boot(){
     return;
   }
   $("login").classList.add("hide"); $("out").classList.remove("hide");
-  $("who").textContent = store.user?.name ?? "";
+  $("who").textContent = `${store.user?.name ?? ""} · v${APP_VERSION}`;
   await loadRun();
 }
 

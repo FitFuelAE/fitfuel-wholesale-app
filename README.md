@@ -72,6 +72,21 @@ than failing obscurely.
 - **Icons.** `icon-512.png` is referenced but not committed; drop one in at the repo
   root and both the manifests and Apple touch icons pick it up.
 
+## Before every push that touches `lib/`
+
+```bash
+node scripts/stamp-version.mjs
+```
+
+It stamps a new build version into the module imports (`?v=…`), the version shown
+in each app's header, and the service-worker cache names.
+
+This is not housekeeping. `lib/parsers.js` was served under an unversioned URL
+with a ten-minute cache, so a **fixed parser looked broken twice** — the file was
+deployed, the browser kept using the old one, and the failure log recorded a
+version number I had forgotten to bump, which made it look current. A version
+that is not bumped is worse than no version, because it lies.
+
 ## Deploying
 
 Push to `main`. GitHub Pages redeploys automatically.
