@@ -67,6 +67,11 @@ details.ord .body{padding:0 16px 16px}
 .sumline .s{font-size:12.5px;color:var(--subtle)}
 .linebox{max-height:min(46vh,380px);overflow-y:auto;border:1px solid var(--line);
   border-radius:var(--r);padding:2px 10px;background:var(--bg)}
+.docrow{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:9px 11px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:6px}
+.docrow .no{font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:700}
+.docrow.gone{opacity:.55}
+.p-temp{background:rgba(239,179,76,.16);color:#8A5D08}
 </style>
 </head>
 <body>
@@ -282,6 +287,23 @@ async function loadQueue(){
         </summary>
         <div class="body">
 
+        ${(o.invoices ?? []).length ? `
+          <label style="margin-top:6px">Invoice${(o.invoices ?? []).length > 1 ? "s" : ""} — download to pick and deliver from</label>
+          ${(o.invoices ?? []).map((v) => {
+            const temp = v.billing_entities?.destroy_document_after_download;
+            const gone = !!v.document_destroyed_at || !v.pdf_path;
+            return `<div class="docrow ${gone ? "gone" : ""}">
+              <div>
+                <div class="no">${v.erp_invoice_no ?? "(no number)"}</div>
+                <div class="muted">${v.billing_entities?.display_name ?? ""} · ${(v.erp ?? "").toUpperCase()}${v.amount ? ` · AED ${aed(v.amount)}` : ""}</div>
+              </div>
+              ${gone
+                ? `<span class="pill p-warn">no longer available</span>`
+                : `${temp ? `<span class="pill p-temp">removed after download</span>` : ""}
+                   <button class="sec" data-doc="${v.id}" style="padding:8px 14px;font-size:13px">Download</button>`}
+            </div>`;
+          }).join("")}` : ""}
+
         <div class="${(o.order_lines ?? []).length > 10 ? "linebox" : ""}" style="margin-top:4px">
           ${(o.order_lines ?? []).map((l) => `
             <div class="pick">
@@ -305,6 +327,18 @@ async function loadQueue(){
         </div>
         </div>
       </details>`).join("");
+
+    el.querySelectorAll("[data-doc]").forEach((b) => b.onclick = async () => {
+      b.disabled = true; const was = b.textContent; b.textContent = "Fetching…"; showErr("");
+      try {
+        const r = await api(`/warehouse/doc?invoiceId=${b.dataset.doc}`);
+        // Open in a new tab so the signed URL is used immediately — it lasts two
+        // minutes, and for some companies the file is removed shortly after.
+        window.open(r.url, "_blank", "noopener");
+        b.textContent = "✓ Downloaded";
+        if (r.temporary) showErr("This document is removed from the server shortly after download — save the copy you just opened.");
+      } catch (e) { showErr(e.message); b.textContent = was; b.disabled = false; }
+    });
 
     // Shorting a line bounces the order back to the office to amend the ERP document.
     el.querySelectorAll("[data-confirm]").forEach((b) => b.onclick = async () => {
