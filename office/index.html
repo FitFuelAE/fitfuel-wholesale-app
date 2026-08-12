@@ -67,6 +67,13 @@ h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
 .linebox .line:last-child{padding-bottom:10px}
 .lineno{display:inline-block;min-width:22px;color:var(--subtle);font-family:ui-monospace,Menlo,monospace;font-size:12px}
 .danger{color:var(--bad);border-color:rgba(232,69,69,.4)}
+.tabs{display:flex;gap:8px;margin-bottom:16px}
+.tab{background:transparent;color:var(--subtle);border:1px solid var(--line);padding:9px 16px}
+.tab.on{background:var(--indigo);color:#fff;border-color:var(--indigo)}
+.big{font-size:22px;font-weight:900;letter-spacing:-.7px}
+.docrow{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:9px 11px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:6px}
+.docrow .no{font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:700}
 details.ord{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);margin-bottom:12px}
 details.ord[open]{border-color:var(--violet)}
 details.ord>summary{list-style:none;cursor:pointer;padding:14px 18px;display:flex;
@@ -122,6 +129,11 @@ details.ord .body{padding:0 18px 18px}
     <button id="go" style="width:100%">Sign in</button>
   </section>
 
+  <nav id="tabs" class="tabs hide">
+    <button class="tab on" data-tab="inbox">Inbox</button>
+    <button class="tab" data-tab="summary">Day summary</button>
+  </nav>
+
   <section id="upload" class="card hide">
     <h2>Add a document</h2>
     <p class="muted" style="margin:-6px 0 14px">
@@ -137,6 +149,7 @@ details.ord .body{padding:0 18px 18px}
   </section>
 
   <section id="inbox" class="hide"></section>
+  <section id="summary" class="hide"></section>
   <input type="file" accept="application/pdf" id="docpick" multiple class="hide">
   <input type="file" accept="application/pdf,image/*" id="pdfpick" class="hide">
 </main>
@@ -225,9 +238,11 @@ window.ffReload = () => loadInbox();
 async function boot(){
   if (!T.token){
     $("login").classList.remove("hide"); $("inbox").classList.add("hide");
-    $("upload").classList.add("hide"); $("out").classList.add("hide"); return;
+    $("upload").classList.add("hide"); $("out").classList.add("hide");
+    $("tabs").classList.add("hide"); $("summary").classList.add("hide"); return;
   }
-  $("login").classList.add("hide"); $("out").classList.remove("hide"); $("upload").classList.remove("hide");
+  $("login").classList.add("hide"); $("out").classList.remove("hide");
+  $("upload").classList.remove("hide"); $("tabs").classList.remove("hide");
   $("who").textContent = T.user?.name ?? "";
   try { ENTITIES = (await api("/entities")).entities; } catch { ENTITIES = []; }
   window.ENTITIES = ENTITIES;
@@ -542,6 +557,118 @@ function wireOrder(o){
       await loadInbox();
     } catch(e){ showErr(e.message); state.textContent = ""; b.disabled = false; }
   });
+}
+
+document.querySelectorAll(".tab").forEach((b) => b.onclick = async () => {
+  document.querySelectorAll(".tab").forEach((x) => x.classList.remove("on"));
+  b.classList.add("on"); showErr(""); showOk("");
+  const sum = b.dataset.tab === "summary";
+  $("inbox").classList.toggle("hide", sum);
+  $("upload").classList.toggle("hide", sum);
+  $("summary").classList.toggle("hide", !sum);
+  sum ? await loadSummary() : await loadInbox();
+});
+
+// ---- summary --------------------------------------------------------------
+// A day's worth of activity, so anyone can go back and reconstruct what happened
+// rather than asking around. Every order touched that day, with its lines, its
+// invoices, who did what and when, and what was delivered and collected.
+const SUMMARY_CSS = 1;
+function summaryDayDefault(){
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
+}
+let summaryDate = null;
+
+async function loadSummary(){
+  const el = $("summary"); el.classList.remove("hide");
+  if (!summaryDate) summaryDate = summaryDayDefault();
+  el.innerHTML = `<p class="muted">Loading…</p>`;
+  try {
+    const r = await api(`/summary?date=${summaryDate}`);
+    const t = r.totals;
+    el.innerHTML = `
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <div>
+            <label>Day</label>
+            <input type="date" id="sumDate" value="${r.date}" style="width:auto">
+          </div>
+          <div class="row" style="gap:18px">
+            <div><label>Orders</label><div class="big">${t.orders}</div></div>
+            <div><label>Invoiced</label><div class="big">${aed(t.invoiced)}</div></div>
+            <div><label>Delivered</label><div class="big">${t.delivered}</div></div>
+            <div><label>Collected</label><div class="big">${aed(t.collected)}</div></div>
+          </div>
+        </div>
+        ${t.cancelled ? `<div class="muted" style="margin-top:8px">${t.cancelled} cancelled</div>` : ""}
+      </div>
+      ${r.orders.length ? r.orders.map(summaryCard).join("")
+        : `<div class="card"><p class="muted">Nothing happened on this day.</p></div>`}`;
+
+    $("sumDate").onchange = () => { summaryDate = $("sumDate").value; loadSummary(); };
+  } catch(e){ showErr(e.message); el.innerHTML = ""; }
+}
+
+function summaryCard(o){
+  const inv = (o.invoices ?? []);
+  const dels = (o.deliveries ?? []);
+  const cols = dels.flatMap((d) => d.collections ?? []);
+  const evs = [...(o.order_events ?? [])].sort((a,b) => a.created_at.localeCompare(b.created_at));
+  const when = (x) => new Date(x).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+  const money = (n) => aed(n);
+
+  return `<details class="ord">
+    <summary>
+      <span class="chev">▶</span>
+      <span class="sumline" style="flex:1">
+        <span class="t">${o.source_doc_no ?? o.order_no} · ${o.customers?.name ?? "—"}</span>
+        <span class="s">${(o.order_lines ?? []).length} lines
+          ${inv.length ? `· ${inv.map((v) => v.billing_entities?.display_name).filter(Boolean).join(" + ")}` : ""}
+          ${cols.length ? `· collected ${money(cols.reduce((x,c)=>x+Number(c.amount||0),0))}` : ""}</span>
+      </span>
+      <span class="pill ${o.status === "cancelled" ? "p-warn" : o.status === "delivered" ? "p-ok" : "p-acc"}">${o.status.replace(/_/g," ")}</span>
+    </summary>
+    <div class="body">
+      ${o.cancel_reason ? `<div class="muted" style="margin-bottom:10px"><strong>Cancelled:</strong> ${o.cancel_reason} — ${o.cancelled_by ?? ""}</div>` : ""}
+      ${o.hold_reason ? `<div class="muted" style="margin-bottom:10px"><strong>On hold:</strong> ${o.hold_reason} — ${o.held_by ?? ""}</div>` : ""}
+
+      ${inv.length ? `<label>Invoices</label>${inv.map((v) => `
+        <div class="docrow">
+          <div><div class="no">${v.erp_invoice_no ?? "(no number)"}</div>
+            <div class="muted">${v.billing_entities?.display_name ?? ""} · ${(v.erp||"").toUpperCase()} · ${v.status}</div></div>
+          <div style="text-align:right">
+            <div class="mono">AED ${money(v.amount)}</div>
+            <div class="muted">${v.document_destroyed_at ? "document removed" : v.pdf_path ? "document held" : "no document"}${v.document_downloaded_by ? ` · taken by ${v.document_downloaded_by}` : ""}</div>
+          </div>
+        </div>`).join("")}` : ""}
+
+      <label style="margin-top:12px">${(o.order_lines ?? []).length} lines</label>
+      <div class="${(o.order_lines ?? []).length > 10 ? "linebox" : ""}">
+        ${(o.order_lines ?? []).map((l) => {
+          const short = l.qty_confirmed != null && Number(l.qty_confirmed) < Number(l.qty_ordered);
+          return `<div class="line">
+            <span>${l.description}${l.free_of_charge ? ` <span class="pill p-warn">free</span>` : ""}
+              ${short ? ` <span class="pill p-warn">short${l.short_reason ? `: ${l.short_reason}` : ""}</span>` : ""}</span>
+            <span class="mono">${Number(l.qty_ordered)}${l.qty_confirmed != null ? ` → ${Number(l.qty_confirmed)}` : ""}${l.unit_price ? ` @ ${money(l.unit_price)}` : ""}</span>
+          </div>`;
+        }).join("")}
+      </div>
+
+      ${dels.length ? `<label style="margin-top:12px">Delivery</label>${dels.map((d) => `
+        <div class="line"><span>${d.driver_username} · ${d.status}${d.lpo_reference ? ` · LPO ${d.lpo_reference}` : ""}</span>
+        <span class="muted">${d.delivered_at ? when(d.delivered_at) : ""}</span></div>
+        ${(d.collections ?? []).map((c) => `<div class="line"><span>${c.method}${c.cheque_no ? ` ${c.cheque_no}` : ""} · ${c.collected_by}</span>
+        <span class="mono">AED ${money(c.amount)}</span></div>`).join("")}`).join("")}` : ""}
+
+      <label style="margin-top:12px">What happened</label>
+      <div class="${evs.length > 10 ? "linebox" : ""}">
+        ${evs.map((e) => `<div class="line">
+          <span>${e.from_status ? `${e.from_status.replace(/_/g," ")} → ` : ""}${e.to_status.replace(/_/g," ")}
+            <span class="muted">· ${e.actor_username ?? "—"} (${e.actor_role ?? "—"})</span></span>
+          <span class="muted">${when(e.created_at)}</span></div>`).join("")}
+      </div>
+    </div>
+  </details>`;
 }
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
