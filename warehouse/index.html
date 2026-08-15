@@ -96,17 +96,19 @@ details.ord .body{padding:0 16px 16px}
   <nav id="tabs" class="tabs hide">
     <button class="tab on" data-tab="queue">Orders</button>
     <button class="tab" data-tab="money">Money <span id="inboxBadge" class="badge hide">0</span></button>
+    <button class="tab" data-tab="returns">Returns <span id="retBadge" class="badge hide">0</span></button>
     <button class="tab" data-tab="summary">Day summary</button>
   </nav>
 
   <section id="queue" class="hide"></section>
   <section id="money" class="hide"></section>
+  <section id="returns" class="hide"></section>
   <section id="summary" class="hide"></section>
 </main>
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.4";
+const APP_VERSION = "2026-08-15.5";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -172,8 +174,10 @@ document.querySelectorAll(".tab").forEach((b) => b.onclick = async () => {
   const tab = b.dataset.tab;
   $("queue").classList.toggle("hide", tab !== "queue");
   $("money").classList.toggle("hide", tab !== "money");
+  $("returns").classList.toggle("hide", tab !== "returns");
   $("summary").classList.toggle("hide", tab !== "summary");
   if (tab === "money") await loadMoney();
+  else if (tab === "returns") await loadReturns();
   else if (tab === "summary") await loadSummary();
   else await loadQueue();
 });
@@ -185,6 +189,76 @@ async function refreshBadge(){
     b.textContent = transfers.length;
     b.classList.toggle("hide", transfers.length === 0);
   } catch { /* badge is cosmetic */ }
+  try {
+    const { returns } = await api("/warehouse/returns");
+    const b = $("retBadge");
+    b.textContent = returns.length;
+    b.classList.toggle("hide", returns.length === 0);
+  } catch { /* badge is cosmetic */ }
+}
+
+// ---- goods coming back on the van -----------------------------------------
+// The driver says what the customer sent back; this is where someone counts it
+// and signs. Until then it is stock nobody has accounted for.
+async function loadReturns(){
+  const box = $("returns");
+  box.innerHTML = `<div class="muted">Loading…</div>`;
+  let returns = [];
+  try { ({ returns } = await api("/warehouse/returns")); }
+  catch (e) { box.innerHTML = ""; return showErr(e.message); }
+
+  if (!returns.length) {
+    box.innerHTML = `<div class="card"><h2>Returns</h2>
+      <div class="muted">Nothing waiting to be counted in.</div></div>`;
+    return;
+  }
+
+  box.innerHTML = `<h2>${returns.length} return${returns.length === 1 ? "" : "s"} to count in</h2>` +
+    returns.map((r) => `
+      <div class="card" data-ret="${r.id}">
+        <div class="row" style="justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-weight:700">${r.orders?.customers?.name ?? "—"}</div>
+            <div class="muted">${r.orders?.order_no ?? ""} · brought back by ${r.driver_username}
+              · ${new Date(r.created_at).toLocaleString([], {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
+          </div>
+          <span class="pill p-warn">Pending</span>
+        </div>
+
+        <div style="margin-top:12px">
+          ${(r.goods_return_items ?? []).map((i) => `
+            <div class="pick">
+              <div style="min-width:0">
+                <div style="font-weight:600;font-size:14px">${i.description}</div>
+                <div class="muted" style="font-size:12px">driver says ${i.qty_returned} ${i.unit ?? ""}${
+                  i.reason ? ` · ${i.reason}` : ""}</div>
+              </div>
+              <input class="qty" type="number" inputmode="decimal" step="any" min="0"
+                     value="${i.qty_returned}" data-item="${i.id}">
+            </div>`).join("")}
+        </div>
+
+        ${r.note ? `<div class="muted" style="margin-top:10px">Driver's note: ${r.note}</div>` : ""}
+        <div class="row" style="margin-top:14px">
+          <button data-confirm="${r.id}">Count in</button>
+          <span class="muted">Change a figure if what arrived doesn't match.</span>
+        </div>
+      </div>`).join("");
+
+  box.querySelectorAll("[data-confirm]").forEach((b) => b.onclick = async () => {
+    const card = b.closest("[data-ret]");
+    const items = [...card.querySelectorAll("[data-item]")]
+      .map((i) => ({ itemId: i.dataset.item, qtyReceived: Number(i.value) }));
+    b.disabled = true; showErr("");
+    try {
+      const r = await api("/warehouse/returns/confirm", { returnId: b.dataset.confirm, items });
+      if (r.status === "disputed") {
+        showErr(`Counted in with a mismatch — the office can see it: ` +
+          r.mismatches.map((m) => `${m.description} (driver ${m.expected}, counted ${m.counted})`).join("; "));
+      }
+      await loadReturns(); await refreshBadge();
+    } catch (e) { b.disabled = false; showErr(e.message); }
+  });
 }
 
 const aed = (n) => Number(n || 0).toFixed(2);

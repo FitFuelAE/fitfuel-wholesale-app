@@ -50,6 +50,18 @@ button:disabled{opacity:.45}
 .term{margin-top:10px;padding:9px 12px;border-radius:var(--r);font-size:13px;font-weight:600;
   background:#f3f4f6;color:var(--ink);border:1px solid var(--line)}
 .term.nocollect{background:rgba(217,119,6,.12);color:#92400e;border-color:rgba(217,119,6,.35)}
+/* Rejected-at-the-door lines. Wide tap targets and a big number field — this is
+   filled in one-handed, standing at a shop counter. */
+.rline{display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:10px 0;border-bottom:1px dashed var(--line)}
+.rline .rd{min-width:0}
+.rline .rn{font-size:14px;font-weight:600;line-height:1.3}
+.rline .rq{font-size:12px;margin-top:2px}
+.rline .rqty{width:88px;flex:none;text-align:right;font-size:17px;padding:10px}
+.rline.short .rqty{border-color:var(--warn);background:rgba(217,119,6,.07)}
+.rwhy{margin:0 0 10px;font-size:15px;padding:10px 12px}
+.retsum{margin-top:12px;padding:11px 13px;border-radius:var(--r);font-size:13px;font-weight:600;
+  background:rgba(217,119,6,.12);color:#92400e;border:1px solid rgba(217,119,6,.35)}
 .muted{color:var(--subtle);font-size:13px}
 .err{background:rgba(220,38,38,.10);color:var(--bad);padding:10px 12px;border-radius:var(--r);
   font-size:13px;margin-bottom:12px}
@@ -103,7 +115,7 @@ h2{font-size:15px;margin:18px 0 8px;letter-spacing:-.3px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.4";
+const APP_VERSION = "2026-08-15.5";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -348,6 +360,33 @@ async function openHandover(collections, total){
 const proofs = new Map();          // invoiceId -> uploaded storage path
 let chequePath = null;
 let method = "cash";
+let lines = [];                    // the drop's lines, with what the customer took
+
+// What an invoice is still worth once some of it goes back on the van.
+//
+// A ratio of line values applied to the invoice total, NOT a sum of the accepted
+// lines: a line's printed amount is VAT-inclusive on Zoho and pre-VAT on Facts
+// and Tally, while the invoice total is always what the customer pays. This
+// mirrors collectableByInvoice() on the server, which has the final say — the
+// figures shown here have to agree with the ones the split is checked against.
+const lineValue = (l, q) => l.amount != null
+  ? (l.ordered ? l.amount * (q / l.ordered) : 0)
+  : q * (l.rate || 0);
+
+function collectableFor(inv){
+  const mine = lines.filter((l) => l.entity === inv.billing_entity_id);
+  if (!mine.length) return Number(inv.amount || 0);
+  const base = mine.reduce((t, l) => t + lineValue(l, l.ordered), 0);
+  const kept = mine.reduce((t, l) => t + lineValue(l, l.accepted), 0);
+  return base > 0
+    ? Math.round(Number(inv.amount || 0) * (kept / base) * 100) / 100
+    : Number(inv.amount || 0);
+}
+const collectableTotal = (invoices) =>
+  invoices.reduce((t, v) => t + collectableFor(v), 0);
+const collectableTotalFull = (invoices) =>
+  invoices.reduce((t, v) => t + Number(v.amount || 0), 0);
+const anyRejected = () => lines.some((l) => l.accepted < l.loaded - 0.001);
 
 // What the office said about this account when they uploaded the document.
 // `collect` is what the payment step starts on: for credit and bank transfer
@@ -370,7 +409,20 @@ function openDrop(d){
 
   const o = d.orders, c = o.customers;
   const invoices = (o.invoices || []).map((v) => ({ ...v, amount: Number(v.amount ?? 0) }));
-  const total = invoices.reduce((t, v) => t + v.amount, 0);
+
+  // What left the warehouse, and what the customer is taking. They start equal;
+  // the driver only touches this when something is being sent back.
+  lines = (o.order_lines || []).map((l) => ({
+    id: l.id, description: l.description, unit: l.unit || "",
+    free: !!l.free_of_charge, entity: l.billing_entity_id,
+    ordered: Number(l.qty_ordered ?? 0),
+    amount: l.amount == null ? null : Number(l.amount),
+    rate: Number(l.unit_price ?? 0),
+    loaded: Number(l.qty_confirmed ?? l.qty_ordered ?? 0),
+    accepted: Number(l.qty_confirmed ?? l.qty_ordered ?? 0),
+    reason: "",
+  }));
+  const total = collectableTotal(invoices);
 
   $("run").classList.add("hide");
   const el = $("detail"); el.classList.remove("hide");
@@ -396,6 +448,27 @@ function openDrop(d){
           </div>
           <button class="sec sm shoot" data-inv="${v.id}">Photo</button>
         </div>`).join("")}</div>
+    </div>
+
+    <div class="card">
+      <label>What the customer is taking</label>
+      <div class="muted" style="margin:-2px 0 10px;font-size:13px">
+        Everything, unless you say otherwise. Change a quantity only if the customer
+        is sending some of it back with you.
+      </div>
+      <div id="rejbox" class="hide">${lines.map((l, i) => `
+        <div class="rline" data-l="${i}">
+          <div class="rd">
+            <div class="rn">${l.description}</div>
+            <div class="muted rq">loaded ${l.loaded} ${l.unit}${l.free ? " · free of charge" : ""}</div>
+          </div>
+          <input class="rqty" type="number" inputmode="decimal" step="any" min="0"
+                 max="${l.loaded}" value="${l.accepted}" data-q="${i}">
+        </div>
+        <input class="rwhy hide" placeholder="Why is it coming back?" data-why="${i}">`).join("")}
+      </div>
+      <button class="sec sm" id="togglerej">Customer rejected something</button>
+      <div id="rejsum" class="retsum hide"></div>
     </div>
 
     <div class="card">
@@ -460,6 +533,54 @@ function openDrop(d){
   initSignature();
   allocatePro(invoices, total);
 
+  // ---- rejected lines ----
+  const rejsum = $("rejsum");
+  const refreshRejected = () => {
+    lines.forEach((l, i) => {
+      const row = el.querySelector(`.rline[data-l="${i}"]`);
+      const why = el.querySelector(`[data-why="${i}"]`);
+      const short = l.accepted < l.loaded - 0.001;
+      row?.classList.toggle("short", short);
+      why?.classList.toggle("hide", !short);
+    });
+
+    const back = lines.filter((l) => l.accepted < l.loaded - 0.001);
+    const owed = collectableTotal(invoices);
+    rejsum.classList.toggle("hide", !back.length);
+    if (back.length) {
+      rejsum.innerHTML =
+        `${back.length} line${back.length === 1 ? "" : "s"} going back with you` +
+        ` — ${back.map((l) => `${Math.round((l.loaded - l.accepted) * 1000) / 1000} ${l.unit}`).join(", ")}.` +
+        `<br>Collect <strong>AED ${money(owed)}</strong> instead of AED ${money(collectableTotalFull(invoices))}.` +
+        `<br>The warehouse signs for them when you get back.`;
+    }
+    // The amount due follows the goods, and the split follows the amount.
+    if (method !== "none") { $("amt").value = money(owed); allocatePro(invoices, owed); }
+    $("complete").textContent = back.length ? "Complete drop — part returned" : "Complete drop";
+  };
+
+  $("togglerej").onclick = () => {
+    const box = $("rejbox");
+    box.classList.toggle("hide");
+    $("togglerej").textContent = box.classList.contains("hide")
+      ? "Customer rejected something" : "Nothing rejected after all";
+    if (box.classList.contains("hide")) {
+      lines.forEach((l) => { l.accepted = l.loaded; l.reason = ""; });
+      el.querySelectorAll(".rqty").forEach((q, i) => { q.value = lines[i].loaded; });
+      el.querySelectorAll(".rwhy").forEach((w) => { w.value = ""; });
+      refreshRejected();
+    }
+  };
+  el.querySelectorAll(".rqty").forEach((q) => q.oninput = () => {
+    const l = lines[Number(q.dataset.q)];
+    const v = q.value === "" ? l.loaded : Number(q.value);
+    l.accepted = Math.max(0, Math.min(l.loaded, Number.isFinite(v) ? v : l.loaded));
+    refreshRejected();
+  });
+  el.querySelectorAll(".rwhy").forEach((w) => w.oninput = () => {
+    lines[Number(w.dataset.why)].reason = w.value.trim();
+  });
+
   // ---- photo capture ----
   const cam = $("cam");
   const capture = (onDone, btn, stateEl, kind) => {
@@ -510,14 +631,17 @@ function openDrop(d){
 // Pro-rata by invoice amount, remainder onto the largest — mirrors the server,
 // so what the driver sees is what gets written.
 function allocatePro(invoices, received){
-  const total = invoices.reduce((t, v) => t + v.amount, 0);
+  // Weighted by what is still owed on each invoice, not what was invoiced, so a
+  // company whose lines went back takes a smaller share. Matches the server.
+  const owed = invoices.map((v) => collectableFor(v));
+  const total = owed.reduce((t, a) => t + a, 0);
   const cents = Math.round((received || 0) * 100);
   if (total > 0) {
-    const parts = invoices.map((v) => Math.floor((cents * v.amount) / total));
+    const parts = invoices.map((v, i) => Math.floor((cents * owed[i]) / total));
     const diff = cents - parts.reduce((a, b) => a + b, 0);
     if (diff) {
       let big = 0;
-      invoices.forEach((v, i) => { if (v.amount > invoices[big].amount) big = i; });
+      owed.forEach((a, i) => { if (a > owed[big]) big = i; });
       parts[big] += diff;
     }
     invoices.forEach((v, i) => {
@@ -546,15 +670,23 @@ async function complete(d, invoices, status){
   const original = btn.textContent;
   btn.disabled = true;
   try {
-    if (status === "delivered") {
+    // A drop with something going back closes as a partial delivery, not a
+    // complete one, so the office and the warehouse both see it for what it is.
+    const back = lines.filter((l) => l.accepted < l.loaded - 0.001);
+    if (status === "delivered" && back.length) status = "partial";
+
+    if (status === "delivered" || status === "partial") {
       const missing = invoices.filter((v) => !proofs.has(v.id));
       if (missing.length) throw new Error(`${missing.length} invoice${missing.length>1?"s":""} still need a photo.`);
       if (!signatureDrawn) throw new Error("Customer signature required.");
       if (method !== "none" && !checkAllocTotal()) throw new Error("The split must add up to the amount received.");
+      // The office has to raise a credit note off this. "Returned" is not a reason.
+      const noReason = back.find((l) => !l.reason);
+      if (noReason) throw new Error(`Say why "${noReason.description.slice(0, 40)}" is coming back.`);
     }
 
     let signaturePath = null;
-    if (status === "delivered") {
+    if (status === "delivered" || status === "partial") {
       btn.textContent = "Uploading…";
       const sigBlob = await new Promise((r) => $("sig").toBlob(r, "image/jpeg", 0.7));
       signaturePath = await upload(sigBlob, "signature");
@@ -571,9 +703,12 @@ async function complete(d, invoices, status){
       proofs: [...proofs.entries()].map(([invoiceId, photoPath]) => ({ invoiceId, photoPath })),
       lpoReference: $("lpo").value.trim() || null,
       lat: pos?.coords.latitude, lng: pos?.coords.longitude, accuracy: pos?.coords.accuracy,
+      lines: back.length
+        ? lines.map((l) => ({ lineId: l.id, qtyAccepted: l.accepted, reason: l.reason || null }))
+        : undefined,
     });
 
-    if (status === "delivered" && method !== "none") {
+    if ((status === "delivered" || status === "partial") && method !== "none") {
       const amount = Number($("amt").value);
       await api("/driver/collect", {
         deliveryId: d.id, method, amount,
@@ -584,7 +719,10 @@ async function complete(d, invoices, status){
         chequeDate: $("cdate")?.value || null,
         photoPath: chequePath,
       });
-      showOk(`Drop completed · AED ${money(amount)} recorded as ${method}`);
+      showOk(`Drop completed · AED ${money(amount)} recorded as ${method}` +
+        (back.length ? ` · ${back.length} line${back.length===1?"":"s"} coming back — hand them to the warehouse` : ""));
+    } else if (status === "partial") {
+      showOk(`Drop completed · ${back.length} line${back.length===1?"":"s"} coming back — hand them to the warehouse`);
     } else {
       showOk(`Drop marked ${status}.`);
     }
