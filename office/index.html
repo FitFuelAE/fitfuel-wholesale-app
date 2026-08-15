@@ -6,7 +6,8 @@
 <meta name="theme-color" content="#111111">
 <title>FitFuel Wholesale — Office</title>
 <link rel="manifest" href="office.webmanifest">
-<link rel="apple-touch-icon" href="../icon-512.png">
+<link rel="apple-touch-icon" href="icon-512.png">
+<link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
 <style>
 :root{
   --ink-deep:#111827; --subtle:#6b7280; --slate:#374151;
@@ -159,7 +160,7 @@ details.ord .body{padding:0 18px 18px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.6";
+const APP_VERSION = "2026-08-15.7";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -814,11 +815,11 @@ boot();
 <script type="module">
 // Reading the ERP's PDF. pdf.js is vendored (../lib/pdfjs) because the app is
 // served from GitHub Pages and may not fetch anything from another origin.
-import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-15.6";
-import { extractLines } from "../lib/pdf-text.js?v=2026-08-15.6";
-import { parseDocument } from "../lib/parsers.js?v=2026-08-15.6";
+import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-15.7";
+import { extractLines } from "../lib/pdf-text.js?v=2026-08-15.7";
+import { parseDocument } from "../lib/parsers.js?v=2026-08-15.7";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-15.6";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-15.7";
 
 const $$ = (id) => document.getElementById(id);
 const aed2 = (n) => Number(n || 0).toFixed(2);
