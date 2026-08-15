@@ -8,7 +8,8 @@
 //
 // API responses are never cached at all: a stale order list or a stale cash
 // position is worse than an honest offline error.
-const CACHE = "ffws-warehouse-2026-08-15.11";
+const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
+const CACHE = "ffws-warehouse-2026-08-15.12";
 const SHELL = ["./", "./index.html"];
 
 self.addEventListener("install", (e) => {
@@ -76,4 +77,34 @@ self.addEventListener("notificationclick", (e) => {
       return self.clients.openWindow(target);
     }),
   );
+});
+
+// A browser may retire a push subscription and issue a replacement at any time —
+// after an update, after its own housekeeping, for reasons it does not explain.
+// It fires this event once, and if nobody listens the replacement is never
+// reported: the server keeps pushing at the dead endpoint, gets 410, drops the
+// row, and that person silently stops being told anything. Their app still says
+// notifications are on, which is the worst part.
+self.addEventListener("pushsubscriptionchange", (e) => {
+  e.waitUntil((async () => {
+    try {
+      const old = e.oldSubscription?.endpoint;
+      let sub = e.newSubscription;
+      if (!sub) {
+        // Some browsers hand over the old subscription only and expect the app
+        // to ask for a new one with the same key.
+        const key = e.oldSubscription?.options?.applicationServerKey;
+        if (!key) return;
+        sub = await self.registration.pushManager.subscribe({
+          userVisibleOnly: true, applicationServerKey: key,
+        });
+      }
+      if (!sub || !old) return;
+      await fetch(API + "/push/rotate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldEndpoint: old, subscription: sub.toJSON() }),
+      });
+    } catch { /* the app re-registers on next open as the backstop */ }
+  })());
 });
