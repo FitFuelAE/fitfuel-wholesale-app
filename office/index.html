@@ -155,7 +155,7 @@ details.ord .body{padding:0 18px 18px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.2";
+const APP_VERSION = "2026-08-15.3";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -714,16 +714,26 @@ boot();
 <script type="module">
 // Reading the ERP's PDF. pdf.js is vendored (../lib/pdfjs) because the app is
 // served from GitHub Pages and may not fetch anything from another origin.
-import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-15.2";
-import { extractLines } from "../lib/pdf-text.js?v=2026-08-15.2";
-import { parseDocument } from "../lib/parsers.js?v=2026-08-15.2";
+import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-15.3";
+import { extractLines } from "../lib/pdf-text.js?v=2026-08-15.3";
+import { parseDocument } from "../lib/parsers.js?v=2026-08-15.3";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-15.2";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-15.3";
 
 const $$ = (id) => document.getElementById(id);
 const aed2 = (n) => Number(n || 0).toFixed(2);
 let pending = [];   // one entry per chosen file
 const TERMS = window.TERMS;
+
+// Focus prints a cash sale with no VAT, no seller TRN and no company name, so
+// there is nothing on the page to match on. Every other company charges VAT, so
+// a VAT-free Focus page can only be the cash account — no point asking. The
+// server reaches the same conclusion independently; this just stops the office
+// being asked a question with one possible answer.
+const focusCashEntity = (doc) =>
+  (!doc?.sellerTrn && doc?.erp === "focus" && !doc?.vatTotal)
+    ? (window.ENTITIES || []).find((e) => e.erp === "focus" && !e.vat_registered) ?? null
+    : null;
 
 $$("pick").onclick = () => $$("docpick").click();
 
@@ -781,7 +791,8 @@ function renderBatch() {
     if (d.saved) return `<div class="doc done">
       <div class="hd"><strong>✓ ${d.doc.docNo}</strong><span class="fn">${d.file}</span></div>
       <div class="muted" style="margin-top:4px">${d.savedNote}</div></div>`;
-    const needsCompany = !d.doc.sellerTrn;
+    const cashCo = focusCashEntity(d.doc);
+    const needsCompany = !d.doc.sellerTrn && !cashCo;
     return `<div class="doc" data-i="${i}">
       <div class="hd">
         <strong>${d.doc.erp.toUpperCase()} ${d.doc.docType === "invoice" ? "invoice" : "sales order"} ${d.doc.docNo ?? ""}</strong>
@@ -804,7 +815,9 @@ function renderBatch() {
           <option value="">Choose…</option>
           ${(window.ENTITIES || []).map((e) =>
             `<option value="${e.id}"${d.entityId === e.id ? " selected" : ""}>${e.display_name} · ${e.erp.toUpperCase()}</option>`).join("")}
-        </select>` : `<div class="muted">Company identified from TRN ${d.doc.sellerTrn}.</div>`}
+        </select>`
+        : cashCo ? `<div class="muted">No VAT on a Focus document — billed as <strong>${cashCo.display_name}</strong>.</div>`
+        : `<div class="muted">Company identified from TRN ${d.doc.sellerTrn}.</div>`}
       <details style="margin-top:8px"><summary class="muted" style="cursor:pointer">Show the ${d.doc.lines.length} lines</summary>
         <div class="linebox" style="margin-top:8px">${d.doc.lines.map((l, n) => `
           <div class="line"><span><span class="lineno">${l.sl ?? n + 1}</span>${l.description}</span>
@@ -844,7 +857,7 @@ async function saveAll() {
       d.ok = false; d.reason = "Choose how this customer pays, then save again.";
       failed++; continue;
     }
-    if (!d.doc.sellerTrn && !d.entityId) {
+    if (!d.doc.sellerTrn && !d.entityId && !focusCashEntity(d.doc)) {
       d.ok = false; d.reason = "Choose which company issued this document, then save again.";
       failed++; continue;
     }
