@@ -65,10 +65,10 @@ office is told why, and nothing is written.
 vector outlines and there is no text left to read; the app says so plainly rather
 than failing obscurely.
 
-## Still to build (Phase 1)
+## Still to build
 
-- **Office invoice entry form** — currently a stub. Needs invoice number, amount,
-  VAT and PDF upload, per invoice on the order.
+- **Sales order entry** (Phase 2) — salesmen still send orders by WhatsApp. Lands
+  at `/sales/`; the API route (`POST /orders`) is already there and tested.
 - **Icons.** `icon-512.png` is referenced but not committed; drop one in at the repo
   root and both the manifests and Apple touch icons pick it up.
 
