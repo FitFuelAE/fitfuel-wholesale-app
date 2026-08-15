@@ -108,7 +108,7 @@ details.ord .body{padding:0 16px 16px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.5";
+const APP_VERSION = "2026-08-15.6";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -222,8 +222,13 @@ async function loadReturns(){
             <div class="muted">${r.orders?.order_no ?? ""} · brought back by ${r.driver_username}
               · ${new Date(r.created_at).toLocaleString([], {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
           </div>
-          <span class="pill p-warn">Pending</span>
+          <span class="pill ${r.handed_to ? "p-acc" : "p-warn"}">${
+            r.handed_to ? "Handed over" : "Still on the van"}</span>
         </div>
+        ${r.handed_to ? `<div class="muted" style="margin-top:6px">
+          ${r.driver_username} handed this to <strong>${r.handed_to}</strong> at ${
+            new Date(r.handed_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})} — count it in below.
+        </div>` : ""}
 
         <div style="margin-top:12px">
           ${(r.goods_return_items ?? []).map((i) => `

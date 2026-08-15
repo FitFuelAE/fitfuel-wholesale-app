@@ -159,7 +159,7 @@ details.ord .body{padding:0 18px 18px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.5";
+const APP_VERSION = "2026-08-15.6";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -611,15 +611,17 @@ async function loadReturns(){
     return;
   }
 
-  const RSTATE = {
-    pending:  ["p-warn", "Still on the van"],
-    received: ["p-ok",   "Counted in by the warehouse"],
-    disputed: ["p-warn", "Count disputed"],
-  };
+  // Where the stock itself has got to. Handed over but not yet counted in is a
+  // real state and worth seeing — it is the gap where things go missing.
+  const rstate = (r) =>
+    r.status === "received" ? ["p-ok", `Counted in by ${r.received_by}`]
+    : r.status === "disputed" ? ["p-warn", "Count disputed"]
+    : r.handed_to ? ["p-acc", `Handed to ${r.handed_to}, not yet counted`]
+    : ["p-warn", `Still on ${r.driver_username}'s van`];
 
   box.innerHTML = `<h2>${returns.length} return${returns.length === 1 ? "" : "s"} awaiting a credit note</h2>` +
     returns.map((r) => {
-      const [cls, label] = RSTATE[r.status] ?? ["p-neu", r.status];
+      const [cls, label] = rstate(r);
       const o = r.orders ?? {};
       const inv = (o.invoices ?? []).map((v) =>
         `${v.erp_invoice_no ?? "(no number)"}${v.billing_entities?.display_name ? ` · ${v.billing_entities.display_name}` : ""}`);
@@ -648,7 +650,10 @@ async function loadReturns(){
 
         ${r.dispute_note ? `<div class="held" style="margin-top:12px"><strong>Count disputed:</strong> ${r.dispute_note}</div>` : ""}
         ${r.status === "pending"
-          ? `<div class="muted" style="margin-top:12px">Waiting for the warehouse to count these in. You can raise the credit note now if you are sure.</div>`
+          ? `<div class="muted" style="margin-top:12px">${r.handed_to
+              ? `${r.driver_username} handed these to ${r.handed_to}; nobody has counted them in yet.`
+              : `Still on ${r.driver_username}'s van.`
+            } You can raise the credit note now if you are sure.</div>`
           : ""}
 
         <div class="row" style="margin-top:14px">
@@ -809,11 +814,11 @@ boot();
 <script type="module">
 // Reading the ERP's PDF. pdf.js is vendored (../lib/pdfjs) because the app is
 // served from GitHub Pages and may not fetch anything from another origin.
-import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-15.5";
-import { extractLines } from "../lib/pdf-text.js?v=2026-08-15.5";
-import { parseDocument } from "../lib/parsers.js?v=2026-08-15.5";
+import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-15.6";
+import { extractLines } from "../lib/pdf-text.js?v=2026-08-15.6";
+import { parseDocument } from "../lib/parsers.js?v=2026-08-15.6";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-15.5";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-15.6";
 
 const $$ = (id) => document.getElementById(id);
 const aed2 = (n) => Number(n || 0).toFixed(2);

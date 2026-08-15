@@ -115,7 +115,7 @@ h2{font-size:15px;margin:18px 0 8px;letter-spacing:-.3px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.5";
+const APP_VERSION = "2026-08-15.6";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -227,6 +227,7 @@ async function loadRun(){
     if (!drops.length) {
       el.innerHTML = `<div class="card"><p class="muted">Nothing assigned to you today.</p></div>`;
       await renderMoney(el);
+      await renderReturns(el);
       return;
     }
     el.innerHTML = `<h2>${drops.length} drop${drops.length>1?"s":""} today</h2>` + drops.map((d, i) => {
@@ -246,6 +247,7 @@ async function loadRun(){
     el.querySelectorAll(".drop").forEach((n) =>
       n.onclick = () => openDrop(drops.find((d) => d.id === n.dataset.id)));
     await renderMoney(el);
+    await renderReturns(el);
   } catch (e) { showErr(e.message); el.innerHTML = ""; }
 }
 
@@ -271,6 +273,113 @@ async function renderMoney(el){
     <button id="handover">Hand over</button>`;
   el.appendChild(card);
   $("handover").onclick = () => openHandover(holding.collections, holding.total);
+}
+
+// ---- end of day: stock in the van -----------------------------------------
+// Goods a customer sent back, still the driver's responsibility until a
+// storekeeper counts them in. Deliberately not day-scoped: something rejected at
+// six in the evening is handed over the next morning.
+async function renderReturns(el){
+  let returns = [];
+  try { ({ returns } = await api("/driver/returns")); }
+  catch { return; }                       // never block the run list on this
+  if (!returns.length) return;
+
+  const items = returns.reduce((t, r) => t + (r.goods_return_items ?? []).length, 0);
+  const waiting = returns.filter((r) => r.handed_to);
+
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `
+    <label>Stock in your van</label>
+    <div style="font-size:24px;font-weight:900;letter-spacing:-.8px">${items} item${items === 1 ? "" : "s"}</div>
+    <div class="muted" style="margin:4px 0 12px">
+      from ${returns.length} customer${returns.length === 1 ? "" : "s"} —
+      ${waiting.length
+        ? `${waiting.length} already handed to ${[...new Set(waiting.map((r) => r.handed_to))].join(", ")}, waiting to be counted in`
+        : "hand over to the storekeeper when you get back"}
+    </div>
+    <button id="retHandover">${waiting.length === returns.length ? "Hand over the rest" : "Hand over returns"}</button>`;
+  el.appendChild(card);
+  $("retHandover").onclick = () => openReturnHandover(returns);
+}
+
+async function openReturnHandover(returns){
+  showErr(""); showOk("");
+  $("run").classList.add("hide");
+  const el = $("detail"); el.classList.remove("hide");
+  el.innerHTML = `<p class="muted">Loading…</p>`;
+
+  let staff = [];
+  try { staff = (await api("/staff?role=warehouse")).staff; }
+  catch (e) { showErr(e.message); }
+
+  el.innerHTML = `
+    <button class="sec" id="back" style="margin-bottom:12px">← Back to run</button>
+
+    <div class="card">
+      <label>Handing over</label>
+      <div style="font-size:24px;font-weight:900;letter-spacing:-.8px" id="rhCount"></div>
+      <div class="muted">from <span id="rhFrom"></span></div>
+    </div>
+
+    <div class="card">
+      <label>Included — untick anything staying on the van</label>
+      ${returns.map((r) => `
+        <label class="inv" style="cursor:pointer;margin-bottom:6px;align-items:flex-start">
+          <span>
+            <span class="no">${r.orders?.customers?.name ?? "—"}</span>
+            <span class="muted" style="display:block">${r.orders?.order_no ?? ""}${
+              r.handed_to ? ` · already handed to ${r.handed_to}` : ""}</span>
+            ${(r.goods_return_items ?? []).map((i) =>
+              `<span class="muted" style="display:block">${i.qty_returned} ${i.unit ?? ""} ${i.description}${
+                i.reason ? ` — ${i.reason}` : ""}</span>`).join("")}
+          </span>
+          <input type="checkbox" class="rpick" data-id="${r.id}"
+                 data-n="${(r.goods_return_items ?? []).length}" checked
+                 style="width:22px;height:22px;flex:none">
+        </label>`).join("")}
+    </div>
+
+    <div class="card">
+      <label for="rto">Hand to</label>
+      <select id="rto">
+        ${staff.length
+          ? staff.map((s) => `<option value="${s.username}">${s.name}</option>`).join("")
+          : `<option value="">No warehouse staff found</option>`}
+      </select>
+    </div>
+
+    <div class="card">
+      <button id="doRetHandover">Confirm handover</button>
+      <div class="muted" style="margin-top:8px;text-align:center">
+        The storekeeper counts the stock and confirms on their own device.
+      </div>
+    </div>`;
+
+  $("back").onclick = loadRun;
+
+  const recount = () => {
+    const picked = [...el.querySelectorAll(".rpick:checked")];
+    const n = picked.reduce((t, i) => t + Number(i.dataset.n), 0);
+    $("rhCount").textContent = `${n} item${n === 1 ? "" : "s"}`;
+    $("rhFrom").textContent = `${picked.length} customer${picked.length === 1 ? "" : "s"}`;
+    $("doRetHandover").disabled = !picked.length;
+  };
+  el.querySelectorAll(".rpick").forEach((i) => i.onchange = recount);
+  recount();
+
+  $("doRetHandover").onclick = async () => {
+    const picked = [...el.querySelectorAll(".rpick:checked")].map((i) => i.dataset.id);
+    const to = $("rto").value;
+    if (!to) return showErr("Choose who you are handing the stock to.");
+    $("doRetHandover").disabled = true; showErr("");
+    try {
+      const r = await api("/driver/returns/handover", { returnIds: picked, toUser: to });
+      showOk(`Handed to ${r.toUser} — they count it in on their device.`);
+      await loadRun();
+    } catch (e) { $("doRetHandover").disabled = false; showErr(e.message); }
+  };
 }
 
 async function openHandover(collections, total){
