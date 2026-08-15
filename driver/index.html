@@ -116,7 +116,7 @@ h2{font-size:15px;margin:18px 0 8px;letter-spacing:-.3px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.8";
+const APP_VERSION = "2026-08-15.9";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -229,6 +229,7 @@ async function loadRun(){
       el.innerHTML = `<div class="card"><p class="muted">Nothing assigned to you today.</p></div>`;
       await renderMoney(el);
       await renderReturns(el);
+      await renderNotifyToggle(el);
       return;
     }
     el.innerHTML = `<h2>${drops.length} drop${drops.length>1?"s":""} today</h2>` + drops.map((d, i) => {

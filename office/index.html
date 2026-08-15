@@ -160,7 +160,7 @@ details.ord .body{padding:0 18px 18px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.8";
+const APP_VERSION = "2026-08-15.9";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -278,6 +278,7 @@ async function loadInbox(){
     if (!orders.length){
       el.innerHTML = `<div class="card"><p class="muted">Inbox empty — nothing waiting to be routed or invoiced.</p></div><div id="cancelled"></div>`;
       renderCancelled();
+      await renderNotifyToggle(el);
       return;
     }
     el.innerHTML = `<h2>${orders.length} order${orders.length>1?"s":""} waiting</h2>` +
@@ -914,11 +915,11 @@ boot();
 <script type="module">
 // Reading the ERP's PDF. pdf.js is vendored (../lib/pdfjs) because the app is
 // served from GitHub Pages and may not fetch anything from another origin.
-import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-15.8";
-import { extractLines } from "../lib/pdf-text.js?v=2026-08-15.8";
-import { parseDocument } from "../lib/parsers.js?v=2026-08-15.8";
+import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-15.9";
+import { extractLines } from "../lib/pdf-text.js?v=2026-08-15.9";
+import { parseDocument } from "../lib/parsers.js?v=2026-08-15.9";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-15.8";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-15.9";
 
 const $$ = (id) => document.getElementById(id);
 const aed2 = (n) => Number(n || 0).toFixed(2);

@@ -109,7 +109,7 @@ details.ord .body{padding:0 16px 16px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.8";
+const APP_VERSION = "2026-08-15.9";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -369,7 +369,11 @@ async function loadQueue(){
       api("/warehouse/queue"), api("/staff?role=driver"),
     ]);
     const driverOptions = drivers.map((d) => `<option value="${d.username}">${d.name}</option>`).join("");
-    if (!orders.length){ el.innerHTML = `<div class="card"><p class="muted">Nothing waiting. All caught up.</p></div>`; return; }
+    if (!orders.length){
+      el.innerHTML = `<div class="card"><p class="muted">Nothing waiting. All caught up.</p></div>`;
+      await renderNotifyToggle(el);
+      return;
+    }
 
     el.innerHTML = `<h2>${orders.length} order${orders.length>1?"s":""} in the queue</h2>` + orders.map((o) => `
       <details class="ord" data-order="${o.id}">
