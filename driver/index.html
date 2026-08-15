@@ -42,6 +42,14 @@ button:disabled{opacity:.45}
 .drop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;cursor:pointer}
 .drop .nm{font-weight:700;font-size:15px}
 .drop .sub{font-size:12px;color:var(--subtle);margin-top:2px}
+/* How the customer pays. A drop where nothing should be collected has to read
+   differently at a glance from one where the driver is owed money. */
+.tterm{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;
+  border-radius:var(--r-pill);background:#f3f4f6;color:var(--subtle);border:1px solid var(--line)}
+.tterm.nocollect{background:rgba(217,119,6,.12);color:var(--warn);border-color:rgba(217,119,6,.3)}
+.term{margin-top:10px;padding:9px 12px;border-radius:var(--r);font-size:13px;font-weight:600;
+  background:#f3f4f6;color:var(--ink);border:1px solid var(--line)}
+.term.nocollect{background:rgba(217,119,6,.12);color:#92400e;border-color:rgba(217,119,6,.35)}
 .muted{color:var(--subtle);font-size:13px}
 .err{background:rgba(220,38,38,.10);color:var(--bad);padding:10px 12px;border-radius:var(--r);
   font-size:13px;margin-bottom:12px}
@@ -95,7 +103,7 @@ h2{font-size:15px;margin:18px 0 8px;letter-spacing:-.3px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-12.2";
+const APP_VERSION = "2026-08-15.1";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -216,6 +224,9 @@ async function loadRun(){
         <div>
           <div class="nm">${i+1}. ${c?.name ?? "—"}</div>
           <div class="sub">${o.order_no} · ${n} invoice${n===1?"":"s"} · ${c?.area ?? ""}</div>
+          ${TERMS[o.payment_term] ? `<div class="sub"><span class="tterm${
+            TERMS[o.payment_term].collect === "none" ? " nocollect" : ""}">${
+            TERMS[o.payment_term].label}</span></div>` : ""}
         </div>
         <span class="pill ${done ? "p-ok" : "p-todo"}">${done ? "Done" : "To do"}</span>
       </div>`;
@@ -338,8 +349,23 @@ const proofs = new Map();          // invoiceId -> uploaded storage path
 let chequePath = null;
 let method = "cash";
 
+// What the office said about this account when they uploaded the document.
+// `collect` is what the payment step starts on: for credit and bank transfer
+// nothing changes hands at the door, so it starts on None. The driver can still
+// override — a credit customer sometimes pays cash — but the default no longer
+// invents a collection nobody made.
+const TERMS = {
+  cash:     { label: "Cash",          collect: "cash",   note: "" },
+  cheque:   { label: "Cheque",        collect: "cheque", note: "" },
+  pdc:      { label: "Cheque (PDC)",  collect: "pdc",    note: "Post-dated cheque." },
+  transfer: { label: "Bank transfer", collect: "none",   note: "Paid by bank transfer — collect nothing." },
+  credit:   { label: "Credit",        collect: "none",   note: "On account — collect nothing." },
+};
+
 function openDrop(d){
-  proofs.clear(); chequePath = null; method = "cash"; signatureDrawn = false;
+  const term = TERMS[d.orders?.payment_term] ?? null;
+  proofs.clear(); chequePath = null; signatureDrawn = false;
+  method = term?.collect ?? "cash";
   showErr(""); showOk("");
 
   const o = d.orders, c = o.customers;
@@ -356,6 +382,8 @@ function openDrop(d){
       <label>Delivering to</label>
       <div style="font-weight:700;font-size:16px">${c?.name ?? "—"}</div>
       <div class="muted" style="margin-top:4px">${o.order_no}${c?.address ? " · " + c.address : ""}</div>
+      ${term ? `<div class="term ${term.collect === "none" ? "nocollect" : ""}">
+        ${term.label}${term.note ? ` — ${term.note}` : ""}</div>` : ""}
     </div>
 
     <div class="card">
@@ -386,14 +414,14 @@ function openDrop(d){
       <label>Payment collected</label>
       <div class="chips" id="methods">
         ${["cash","cheque","pdc","none"].map((m) =>
-          `<button type="button" class="chip${m==="cash"?" on":""}" data-m="${m}">${m === "pdc" ? "PDC" : m[0].toUpperCase()+m.slice(1)}</button>`).join("")}
+          `<button type="button" class="chip${m===method?" on":""}" data-m="${m}">${m === "pdc" ? "PDC" : m[0].toUpperCase()+m.slice(1)}</button>`).join("")}
       </div>
 
-      <div id="paybox" style="margin-top:12px">
+      <div id="paybox" class="${method === "none" ? "hide" : ""}" style="margin-top:12px">
         <label for="amt">Amount received (AED)</label>
         <input id="amt" type="number" inputmode="decimal" step="0.01" value="${money(total)}">
 
-        <div id="chequebox" class="hide" style="margin-top:10px">
+        <div id="chequebox" class="${method === "cheque" || method === "pdc" ? "" : "hide"}" style="margin-top:10px">
           <div class="row">
             <div><label for="cno">Cheque no.</label><input id="cno"></div>
             <div><label for="cdate">Date</label><input id="cdate" type="date"></div>

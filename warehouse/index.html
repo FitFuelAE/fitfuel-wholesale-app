@@ -106,7 +106,7 @@ details.ord .body{padding:0 16px 16px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-12.2";
+const APP_VERSION = "2026-08-15.1";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -188,6 +188,17 @@ async function refreshBadge(){
 }
 
 const aed = (n) => Number(n || 0).toFixed(2);
+
+// Chosen by the office when they upload the document, and shown here so the
+// storekeeper knows what the driver is expected to come back with.
+const TERMS = {
+  cash:     "Cash",
+  cheque:   "Cheque",
+  pdc:      "Cheque (PDC)",
+  transfer: "Bank transfer",
+  credit:   "Credit",
+};
+const termLabel = (t) => t ? `· ${TERMS[t] ?? t}` : "";
 
 // ---- money ----------------------------------------------------------------
 // Two halves: what's been handed TO me and needs counting, and what I'm now
@@ -286,7 +297,7 @@ async function loadQueue(){
           <span class="chev">▶</span>
           <span class="sumline" style="flex:1">
             <span class="t">${o.order_no} · ${o.customers?.name ?? "—"}</span>
-            <span class="s">${(o.order_lines ?? []).length} line${(o.order_lines ?? []).length === 1 ? "" : "s"}${o.customers?.area ? ` · ${o.customers.area}` : ""}</span>
+            <span class="s">${(o.order_lines ?? []).length} line${(o.order_lines ?? []).length === 1 ? "" : "s"}${o.customers?.area ? ` · ${o.customers.area}` : ""} ${termLabel(o.payment_term)}</span>
           </span>
           <span class="pill p-acc">${o.status}</span>
         </summary>
@@ -426,6 +437,7 @@ function summaryCard(o){
       <span class="sumline" style="flex:1">
         <span class="t">${o.source_doc_no ?? o.order_no} · ${o.customers?.name ?? "—"}</span>
         <span class="s">${(o.order_lines ?? []).length} lines
+          ${termLabel(o.payment_term)}
           ${inv.length ? `· ${inv.map((v) => v.billing_entities?.display_name).filter(Boolean).join(" + ")}` : ""}
           ${cols.length ? `· collected ${money(cols.reduce((x,c)=>x+Number(c.amount||0),0))}` : ""}</span>
       </span>

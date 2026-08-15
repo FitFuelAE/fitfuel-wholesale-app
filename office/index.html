@@ -155,7 +155,7 @@ details.ord .body{padding:0 18px 18px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-12.2";
+const APP_VERSION = "2026-08-15.1";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -173,6 +173,20 @@ const T = {
 const showErr = (m) => { const e=$("err"); e.textContent=m||""; e.classList.toggle("hide", !m); if(m) window.scrollTo(0,0); };
 const showOk  = (m) => { const e=$("ok");  e.textContent=m||""; e.classList.toggle("hide", !m); };
 const aed = (n) => Number(n || 0).toFixed(2);
+
+// How the customer pays for one order, chosen by the office when the document is
+// uploaded and carried from here to the warehouse queue and the driver's screen.
+// No default on purpose: a pre-selected "Cash" is the assumption that had drivers
+// recording money a credit customer never handed over.
+// Shared with the upload module below, which runs in its own scope.
+window.TERMS = {
+  cash:     { label: "Cash" },
+  cheque:   { label: "Cheque" },
+  pdc:      { label: "Cheque (PDC)" },
+  transfer: { label: "Bank transfer" },
+  credit:   { label: "Credit" },
+};
+const termLabel = (t) => t ? `· ${window.TERMS[t]?.label ?? t}` : "";
 
 async function api(path, body){
   const res = await fetch(API + path, {
@@ -292,6 +306,7 @@ function renderOrder(o){
         <span class="t">${o.source_doc_no ?? o.order_no} · ${o.customers?.name ?? "—"}</span>
         <span class="s">${lines.length} line${lines.length===1?"":"s"}${total ? ` · AED ${aed(total)}` : ""}
           ${o.source_erp ? `· ${o.source_erp.toUpperCase()}` : ""}
+          ${termLabel(o.payment_term)}
           ${o.lpo_reference ? `· LPO ${o.lpo_reference}` : ""}</span>
       </span>
       <span class="pill ${o.hold_reason ? "needs" : needsAssigning ? "p-acc" : "p-warn"}">${
@@ -643,6 +658,7 @@ function summaryCard(o){
       <span class="sumline" style="flex:1">
         <span class="t">${o.source_doc_no ?? o.order_no} · ${o.customers?.name ?? "—"}</span>
         <span class="s">${(o.order_lines ?? []).length} lines
+          ${termLabel(o.payment_term)}
           ${inv.length ? `· ${inv.map((v) => v.billing_entities?.display_name).filter(Boolean).join(" + ")}` : ""}
           ${cols.length ? `· collected ${money(cols.reduce((x,c)=>x+Number(c.amount||0),0))}` : ""}</span>
       </span>
@@ -698,15 +714,16 @@ boot();
 <script type="module">
 // Reading the ERP's PDF. pdf.js is vendored (../lib/pdfjs) because the app is
 // served from GitHub Pages and may not fetch anything from another origin.
-import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-12.2";
-import { extractLines } from "../lib/pdf-text.js?v=2026-08-12.2";
-import { parseDocument } from "../lib/parsers.js?v=2026-08-12.2";
+import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-15.1";
+import { extractLines } from "../lib/pdf-text.js?v=2026-08-15.1";
+import { parseDocument } from "../lib/parsers.js?v=2026-08-15.1";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-12.2";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-15.1";
 
 const $$ = (id) => document.getElementById(id);
 const aed2 = (n) => Number(n || 0).toFixed(2);
 let pending = [];   // one entry per chosen file
+const TERMS = window.TERMS;
 
 $$("pick").onclick = () => $$("docpick").click();
 
@@ -772,10 +789,21 @@ function renderBatch() {
       </div>
       <div class="muted" style="margin:6px 0">${d.doc.customerName ?? "—"} · ${d.doc.lines.length} lines ·
         lines add up to ${aed2(d.doc.linesSum)}, matching ✓ · <strong>AED ${aed2(d.doc.total)}</strong></div>
+      <label>How does this customer pay?</label>
+      <select data-pt="${i}">
+        <option value="">Choose…</option>
+        ${Object.entries(TERMS).map(([k, t]) =>
+          `<option value="${k}"${d.term === k ? " selected" : ""}>${t.label}</option>`).join("")}
+      </select>
+      <div class="muted" style="margin:6px 0 10px;font-size:12px">
+        Travels with the order to the warehouse and the driver. Choose
+        <strong>Credit</strong> or <strong>Bank transfer</strong> and the driver is told to collect nothing.
+      </div>
       ${needsCompany ? `<label>This document names no company — which one issued it?</label>
         <select data-co="${i}">
           <option value="">Choose…</option>
-          ${(window.ENTITIES || []).map((e) => `<option value="${e.id}">${e.display_name} · ${e.erp.toUpperCase()}</option>`).join("")}
+          ${(window.ENTITIES || []).map((e) =>
+            `<option value="${e.id}"${d.entityId === e.id ? " selected" : ""}>${e.display_name} · ${e.erp.toUpperCase()}</option>`).join("")}
         </select>` : `<div class="muted">Company identified from TRN ${d.doc.sellerTrn}.</div>`}
       <details style="margin-top:8px"><summary class="muted" style="cursor:pointer">Show the ${d.doc.lines.length} lines</summary>
         <div class="linebox" style="margin-top:8px">${d.doc.lines.map((l, n) => `
@@ -788,6 +816,15 @@ function renderBatch() {
       <button id="saveAll"${readyCount ? "" : " disabled"}>Save ${readyCount || ""} to the warehouse queue</button>
       <button class="sec" id="clearBatch">Clear</button>
     </div>`;
+
+  // Hold the choice on the entry itself. This list re-renders after every file
+  // is read and after every save, so anything left only in the DOM is lost.
+  el.querySelectorAll("[data-pt]").forEach((sel) => {
+    sel.onchange = () => { pending[Number(sel.dataset.pt)].term = sel.value || null; };
+  });
+  el.querySelectorAll("[data-co]").forEach((sel) => {
+    sel.onchange = () => { pending[Number(sel.dataset.co)].entityId = sel.value || null; };
+  });
 
   $$("clearBatch").onclick = () => {
     pending = []; el.classList.add("hide");
@@ -803,19 +840,22 @@ async function saveAll() {
   for (let i = 0; i < pending.length; i++) {
     const d = pending[i];
     if (!d.ok || d.saved) continue;
-    const sel = document.querySelector(`[data-co="${i}"]`);
-    if (!d.doc.sellerTrn && !sel?.value) {
+    if (!d.term) {
+      d.ok = false; d.reason = "Choose how this customer pays, then save again.";
+      failed++; continue;
+    }
+    if (!d.doc.sellerTrn && !d.entityId) {
       d.ok = false; d.reason = "Choose which company issued this document, then save again.";
       failed++; continue;
     }
     btn.textContent = `Saving ${d.doc.docNo}…`;
     try {
       const r = await window.ffApi("/office/ingest", {
-        doc: d.doc, billingEntityId: sel?.value || undefined,
+        doc: d.doc, billingEntityId: d.entityId || undefined, paymentTerm: d.term,
         pdfBase64: d.base64, contentType: "application/pdf",
       });
       d.saved = true;
-      d.savedNote = `${r.customer} — ${r.lines} lines` +
+      d.savedNote = `${r.customer} — ${r.lines} lines · ${TERMS[d.term]?.label ?? d.term}` +
         (r.documentDiscarded ? " · source file not stored for this company" : "") +
         (r.resolvedHold ? " · amendment accepted" : "");
       saved++;
