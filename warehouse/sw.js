@@ -8,7 +8,7 @@
 //
 // API responses are never cached at all: a stale order list or a stale cash
 // position is worse than an honest offline error.
-const CACHE = "ffws-warehouse-2026-08-15.10";
+const CACHE = "ffws-warehouse-2026-08-15.11";
 const SHELL = ["./", "./index.html"];
 
 self.addEventListener("install", (e) => {
