@@ -160,7 +160,7 @@ details.ord .body{padding:0 18px 18px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.7";
+const APP_VERSION = "2026-08-15.8";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -284,6 +284,7 @@ async function loadInbox(){
       orders.map(renderOrder).join("") + `<div id="cancelled"></div>`;
     orders.forEach(wireOrder);
     renderCancelled();
+    await renderNotifyToggle(el);
   } catch(e){ showErr(e.message); el.innerHTML = ""; }
 }
 
@@ -808,6 +809,104 @@ function summaryCard(o){
   </details>`;
 }
 
+const PUSH_APP = "office";
+
+// ---- notifications ---------------------------------------------------------
+// Browser push, so a handover or a shortfall reaches whoever needs it instead of
+// waiting to be noticed. Permission is asked for from a tap and never on load:
+// browsers refuse the automatic version, and a "no" is close to permanent.
+async function pushSupported(){
+  return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+}
+
+async function pushState(){
+  if (!(await pushSupported())) return "unsupported";
+  if (Notification.permission === "denied") return "blocked";
+  const reg = await navigator.serviceWorker.ready;
+  return (await reg.pushManager.getSubscription()) ? "on" : "off";
+}
+
+async function pushEnable(){
+  const { key, enabled } = await api("/push/key");
+  if (!enabled || !key) throw new Error("Notifications are not switched on for this system yet.");
+
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") throw new Error("You said no to notifications. Turn them back on in your browser settings.");
+
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription()
+    || await reg.pushManager.subscribe({
+         userVisibleOnly: true,
+         applicationServerKey: Uint8Array.from(
+           atob(key.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)),
+       });
+  await api("/push/subscribe", { app: PUSH_APP, subscription: sub.toJSON() });
+}
+
+async function pushDisable(){
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return;
+  await api("/push/unsubscribe", { endpoint: sub.endpoint }).catch(() => {});
+  await sub.unsubscribe();
+}
+
+// A single row, wherever the app wants to put it.
+async function renderNotifyToggle(el){
+  const state = await pushState().catch(() => "unsupported");
+  if (state === "unsupported") {
+    // iOS only allows this once the app is on the Home Screen, so say so rather
+    // than showing a button that cannot work.
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.navigator.standalone;
+    if (!ios) return;
+    el.insertAdjacentHTML("beforeend",
+      `<div class="card"><label>Notifications</label><div class="muted">
+       Add this app to your Home Screen first — iPhone only allows alerts for installed apps.
+       </div></div>`);
+    return;
+  }
+
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = state === "blocked"
+    ? `<label>Notifications</label><div class="muted">Blocked in your browser settings — turn them back on there.</div>`
+    : `<label>Notifications</label>
+       <div class="muted" style="margin-bottom:10px" id="pushWhy">${
+         state === "on" ? "On for this device." : "Off — you will not be told about anything."}</div>
+       <div class="row">
+         <button class="sec sm" id="pushBtn">${state === "on" ? "Turn off" : "Turn on"}</button>
+         ${state === "on" ? `<button class="sec sm" id="pushTest">Send a test</button>` : ""}
+       </div>`;
+  el.appendChild(card);
+
+  const test = card.querySelector("#pushTest");
+  if (test) test.onclick = async () => {
+    test.disabled = true; test.textContent = "Sending…";
+    try {
+      const r = await api("/push/test", {});
+      // Say what actually happened. "Sent" with nothing arriving is the failure
+      // mode that wastes an afternoon.
+      showErr(r.sent ? "" : (r.errors?.[0] || "Nothing was sent — no device is registered."));
+      test.textContent = r.sent ? "Sent ✓" : "Failed";
+    } catch (e) { showErr(e.message); test.textContent = "Failed"; }
+    setTimeout(() => { test.disabled = false; test.textContent = "Send a test"; }, 2500);
+  };
+
+  const btn = card.querySelector("#pushBtn");
+  if (!btn) return;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      (await pushState()) === "on" ? await pushDisable() : await pushEnable();
+      card.remove();
+      await renderNotifyToggle(el);
+    } catch (e) {
+      btn.disabled = false;
+      showErr(e.message);
+    }
+  };
+}
+
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 boot();
 </script>
@@ -815,11 +914,11 @@ boot();
 <script type="module">
 // Reading the ERP's PDF. pdf.js is vendored (../lib/pdfjs) because the app is
 // served from GitHub Pages and may not fetch anything from another origin.
-import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-15.7";
-import { extractLines } from "../lib/pdf-text.js?v=2026-08-15.7";
-import { parseDocument } from "../lib/parsers.js?v=2026-08-15.7";
+import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-15.8";
+import { extractLines } from "../lib/pdf-text.js?v=2026-08-15.8";
+import { parseDocument } from "../lib/parsers.js?v=2026-08-15.8";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-15.7";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-15.8";
 
 const $$ = (id) => document.getElementById(id);
 const aed2 = (n) => Number(n || 0).toFixed(2);

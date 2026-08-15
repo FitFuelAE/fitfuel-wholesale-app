@@ -8,7 +8,7 @@
 //
 // API responses are never cached at all: a stale order list or a stale cash
 // position is worse than an honest offline error.
-const CACHE = "ffws-warehouse-2026-08-15.7";
+const CACHE = "ffws-warehouse-2026-08-15.8";
 const SHELL = ["./", "./index.html"];
 
 self.addEventListener("install", (e) => {
@@ -42,5 +42,38 @@ self.addEventListener("fetch", (e) => {
         return res;
       })
       .catch(() => caches.match(e.request).then((hit) => hit || caches.match("./index.html"))),
+  );
+});
+
+// ---- push ------------------------------------------------------------------
+// The message arrives whether or not the app is open — that is the entire point.
+// A note is a nudge to go and look, never the record itself, so it carries only
+// enough to decide whether to walk over.
+self.addEventListener("push", (e) => {
+  let n = { title: "FitFuel Wholesale", body: "Something needs you.", url: "./" };
+  try { if (e.data) n = { ...n, ...e.data.json() }; } catch { /* keep the default */ }
+
+  e.waitUntil(self.registration.showNotification(n.title, {
+    body: n.body,
+    icon: "./icon-192.png",
+    badge: "./icon-192.png",
+    // Same tag replaces an earlier unread note instead of stacking five of them.
+    tag: n.tag || "ffws",
+    renotify: true,
+    data: { url: n.url || "./" },
+  }));
+});
+
+// Tapping it should land in the app that is already open, not a second copy.
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const target = new URL(e.notification.data?.url || "./", self.location.origin).href;
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) {
+        if (w.url.startsWith(target) && "focus" in w) return w.focus();
+      }
+      return self.clients.openWindow(target);
+    }),
   );
 });
