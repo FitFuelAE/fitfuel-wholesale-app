@@ -96,7 +96,7 @@ h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.9";
+const APP_VERSION = "2026-08-15.10";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -191,10 +191,20 @@ document.querySelectorAll(".tab").forEach((b) => b.onclick = async () => {
 });
 
 // ---- people & rights -------------------------------------------------------
+// Who can actually be reached, by username. Populated before the list renders —
+// "no alerts" against a name is the answer to "why didn't they know?".
+let DEVICES = {};
+
 async function loadPeople(){
   const el = $("people"); el.classList.remove("hide");
   el.innerHTML = `<p class="muted">Loading…</p>`;
   try {
+    // Never let a missing device list stop the people list rendering.
+    try {
+      DEVICES = Object.fromEntries((await api("/admin/push/devices")).devices
+        .reduce((m, d) => m.set(d.username, (m.get(d.username) ?? 0) + 1), new Map()));
+    } catch { DEVICES = {}; }
+
     const { staff, capabilities } = await api("/admin/staff");
 
     el.innerHTML = `
@@ -220,6 +230,20 @@ async function loadPeople(){
 
       <h2>${staff.length} ${staff.length === 1 ? "person" : "people"}</h2>
       ${staff.map((p) => renderPerson(p, capabilities)).join("")}`;
+
+    el.querySelectorAll("[data-ping]").forEach((b) => b.onclick = async () => {
+      const was = b.textContent;
+      b.disabled = true; b.textContent = "Sending…"; showErr(""); showOk("");
+      try {
+        const r = await api("/admin/push/test", { username: b.dataset.ping });
+        // Say what happened to each device, not just that something was tried.
+        if (r.sent) showOk(`Sent to ${r.sent} of ${r.devices} device(s) for ${b.dataset.ping}.`);
+        else showErr(`${b.dataset.ping}: ${r.errors?.[0] ?? "nothing was sent"}` +
+                     (r.pruned ? " — that device is gone, they need to turn notifications on again." : ""));
+      } catch (e) { showErr(e.message); }
+      b.disabled = false; b.textContent = was;
+      await loadPeople();
+    });
 
     // PIN for drivers, password for everyone else — mirrors what the API enforces.
     const syncRole = () => {
@@ -260,6 +284,10 @@ function renderPerson(p, capabilities){
       <div class="row">
         <span class="pill ${p.active ? "p-ok" : "p-off"}">${p.active ? "active" : "disabled"}</span>
         ${p.is_master ? `<span class="pill p-acc">all rights</span>` : ""}
+        ${(DEVICES[p.username] ?? 0)
+          ? `<span class="pill p-acc">${DEVICES[p.username]} device${DEVICES[p.username] > 1 ? "s" : ""}</span>
+             <button class="sec sm" data-ping="${p.username}">Send test</button>`
+          : `<span class="pill p-off">no alerts</span>`}
       </div>
     </div>
 
