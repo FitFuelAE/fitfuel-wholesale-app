@@ -9,7 +9,7 @@
 // API responses are never cached at all: a stale order list or a stale cash
 // position is worse than an honest offline error.
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const CACHE = "ffws-warehouse-2026-08-16.1";
+const CACHE = "ffws-warehouse-2026-08-16.2";
 const SHELL = ["./", "./index.html"];
 
 self.addEventListener("install", (e) => {

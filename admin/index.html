@@ -49,9 +49,17 @@ h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
 .tabs{display:flex;gap:8px;margin-bottom:18px}
 .tab{background:transparent;color:var(--subtle);border:1px solid var(--line);border-radius:10px}
 .tab.on{background:var(--indigo);color:#fff;border-color:var(--indigo)}
-.person{border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:10px}
+.person{border:1px solid var(--line);border-radius:var(--r);margin-bottom:10px;background:var(--bg)}
 .person.off{opacity:.55}
 .person.master{border-color:var(--violet);background:rgba(17,17,17,.03)}
+.person[open]{border-color:var(--violet)}
+.person>summary{list-style:none;cursor:pointer;padding:14px;display:flex;
+  align-items:center;gap:12px}
+.person>summary::-webkit-details-marker{display:none}
+.person>summary:hover{background:var(--bg-2);border-radius:var(--r)}
+.person>summary .chev{color:var(--subtle);font-size:12px;flex:none;transition:transform .15s}
+.person[open]>summary .chev{transform:rotate(90deg)}
+.person .pbody{padding:0 14px 14px}
 /* One row per right, with how much of it. A dial rather than three switches:
    the levels contain each other, so only one can be on at a time. */
 .capgrid{display:flex;flex-direction:column;gap:2px;margin-top:12px}
@@ -108,7 +116,7 @@ h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-16.1";
+const APP_VERSION = "2026-08-16.2";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -291,22 +299,43 @@ async function loadPeople(){
 
 function renderPerson(p, capabilities){
   const isAdmin = p.role === "admin" && !p.is_master;
-  return `<div class="person ${p.active ? "" : "off"} ${p.is_master ? "master" : ""}" data-user="${p.username}">
-    <div class="row" style="justify-content:space-between">
-      <div>
-        <div style="font-weight:700">${p.name}
-          <span class="muted mono">· ${p.username}</span></div>
-        <div class="muted">${p.role}${p.is_master ? " · master" : ""} — ${ROLE_HINT[p.role] ?? ""}</div>
-      </div>
-      <div class="row">
+  // A summary of what they hold, so the closed row still answers the question
+  // most often being asked — without having to open every person to find out.
+  const held = isAdmin
+    ? capabilities.map((c) => [c, grantLevel(p.permissions, c)]).filter(([, l]) => l)
+    : [];
+  // Counted by level rather than listed. Naming six rights wraps onto three
+  // lines and buries the thing actually being asked, which is how much this
+  // person can do. The list itself is one click away.
+  const byLevel = LEVELS.slice().reverse()
+    .map((l) => [l, held.filter(([, h]) => h === l).length])
+    .filter(([, n]) => n);
+  const heldLabel = p.is_master ? "everything"
+    : !isAdmin ? ""
+    : byLevel.length ? byLevel.map(([l, n]) => `${n} ${l}`).join(" · ")
+    : "no rights yet";
+
+  return `<details class="person ${p.active ? "" : "off"} ${p.is_master ? "master" : ""}" data-user="${p.username}">
+    <summary>
+      <span class="chev">▶</span>
+      <span style="flex:1;min-width:0">
+        <span style="font-weight:700">${p.name}
+          <span class="muted mono">· ${p.username}</span></span>
+        <span class="muted" style="display:block">${p.role}${p.is_master ? " · master" : ""}${
+          heldLabel ? ` — ${heldLabel}` : ` — ${ROLE_HINT[p.role] ?? ""}`}</span>
+      </span>
+      <span class="row" style="flex:none">
         <span class="pill ${p.active ? "p-ok" : "p-off"}">${p.active ? "active" : "disabled"}</span>
-        ${p.is_master ? `<span class="pill p-acc">all rights</span>` : ""}
         ${(DEVICES[p.username] ?? 0)
-          ? `<span class="pill p-acc">${DEVICES[p.username]} device${DEVICES[p.username] > 1 ? "s" : ""}</span>
-             <button class="sec sm" data-ping="${p.username}">Send test</button>`
+          ? `<span class="pill p-acc">${DEVICES[p.username]} device${DEVICES[p.username] > 1 ? "s" : ""}</span>`
           : `<span class="pill p-off">no alerts</span>`}
-      </div>
-    </div>
+      </span>
+    </summary>
+    <div class="pbody">
+      ${(DEVICES[p.username] ?? 0)
+        ? `<div class="row" style="margin-bottom:12px">
+             <button class="sec sm" data-ping="${p.username}">Send test notification</button>
+           </div>` : ""}
 
     ${isAdmin ? `
       <div class="capgrid">
@@ -338,8 +367,9 @@ function renderPerson(p, capabilities){
       <button class="sec sm" data-reset="${p.username}">Reset ${p.role === "driver" ? "PIN" : "password"}</button>
       ${p.is_master ? "" : `<button class="sec sm" data-toggle="${p.username}" data-active="${p.active}">
         ${p.active ? "Disable" : "Reinstate"}</button>`}
+      </div>
     </div>
-  </div>`;
+  </details>`;
 }
 
 // The level someone holds for one right, or null. A bare entry with no level is
