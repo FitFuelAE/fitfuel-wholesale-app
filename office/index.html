@@ -33,7 +33,8 @@ button.sec{background:transparent;color:var(--ink-deep);border:1px solid var(--l
 button.sm{padding:8px 14px;font-size:13px}
 button:disabled{opacity:.45}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:var(--r-pill)}
+.pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;
+  border-radius:var(--r-pill);white-space:nowrap}
 .p-acc{background:rgba(17,17,17,.10);color:var(--violet)}
 .p-ok{background:rgba(22,163,74,.12);color:var(--ok)}
 .p-warn{background:rgba(217,119,6,.16);color:#92400e}
@@ -67,8 +68,11 @@ h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
 .linebox .line:last-child{padding-bottom:10px}
 .lineno{display:inline-block;min-width:22px;color:var(--subtle);font-family:ui-monospace,Menlo,monospace;font-size:12px}
 .danger{color:var(--bad);border-color:rgba(220,38,38,.4)}
-.tabs{display:flex;gap:8px;margin-bottom:16px}
-.tab{background:transparent;color:var(--subtle);border:1px solid var(--line);padding:9px 16px;border-radius:10px}
+/* Wraps rather than running off the side. Four tabs do not fit across a
+   375px phone, and the one that fell off the edge — Day summary — was
+   simply unreachable there. */
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.tab{background:transparent;color:var(--subtle);border:1px solid var(--line);white-space:nowrap;padding:9px 16px;border-radius:10px}
 .tab.on{background:var(--indigo);color:#fff;border-color:var(--indigo)}
 .badge{background:var(--bad);color:#fff;border-radius:var(--r-pill);padding:1px 7px;
   font-size:11px;margin-left:5px}
@@ -160,7 +164,7 @@ details.ord .body{padding:0 18px 18px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-16.2";
+const APP_VERSION = "2026-08-16.3";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -959,11 +963,11 @@ boot();
 <script type="module">
 // Reading the ERP's PDF. pdf.js is vendored (../lib/pdfjs) because the app is
 // served from GitHub Pages and may not fetch anything from another origin.
-import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-16.2";
-import { extractLines } from "../lib/pdf-text.js?v=2026-08-16.2";
-import { parseDocument } from "../lib/parsers.js?v=2026-08-16.2";
+import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-16.3";
+import { extractLines } from "../lib/pdf-text.js?v=2026-08-16.3";
+import { parseDocument } from "../lib/parsers.js?v=2026-08-16.3";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-16.2";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-16.3";
 
 const $$ = (id) => document.getElementById(id);
 const aed2 = (n) => Number(n || 0).toFixed(2);

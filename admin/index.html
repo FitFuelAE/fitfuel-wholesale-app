@@ -33,7 +33,8 @@ button.sec{background:transparent;color:var(--ink-deep);border:1px solid var(--l
 button.sm{padding:7px 13px;font-size:13px}
 button:disabled{opacity:.45}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:var(--r-pill)}
+.pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;
+  border-radius:var(--r-pill);white-space:nowrap}
 .p-ok{background:rgba(22,163,74,.12);color:var(--ok)}
 .p-off{background:#f3f4f6;color:var(--subtle);border:1px solid var(--line)}
 .p-acc{background:rgba(17,17,17,.10);color:var(--violet)}
@@ -46,8 +47,11 @@ button:disabled{opacity:.45}
   font-size:13px;margin-bottom:14px}
 .hide{display:none!important}
 h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
-.tabs{display:flex;gap:8px;margin-bottom:18px}
-.tab{background:transparent;color:var(--subtle);border:1px solid var(--line);border-radius:10px}
+/* Wraps rather than running off the side. Four tabs do not fit across a
+   375px phone, and the one that fell off the edge — Day summary — was
+   simply unreachable there. */
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+.tab{background:transparent;color:var(--subtle);border:1px solid var(--line);white-space:nowrap;border-radius:10px}
 .tab.on{background:var(--indigo);color:#fff;border-color:var(--indigo)}
 .person{border:1px solid var(--line);border-radius:var(--r);margin-bottom:10px;background:var(--bg)}
 .person.off{opacity:.55}
@@ -116,7 +120,7 @@ h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-16.2";
+const APP_VERSION = "2026-08-16.3";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
