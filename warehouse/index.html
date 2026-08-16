@@ -109,7 +109,7 @@ details.ord .body{padding:0 16px 16px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.12";
+const APP_VERSION = "2026-08-16.1";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -124,6 +124,15 @@ const T = {
   get user(){ try { return JSON.parse(localStorage.getItem("ff_wh_wh_user")||"null"); } catch { return null; } },
   set user(v){ v ? localStorage.setItem("ff_wh_wh_user", JSON.stringify(v)) : localStorage.removeItem("ff_wh_wh_user"); },
 };
+// How much of a right the signed-in person holds. The server decides and refuses
+// regardless; this only keeps controls off the screen that would always be
+// refused, because a button that never works is worse than no button.
+const RANK = { read: 1, write: 2, edit: 3 };
+const rightAtLeast = (cap, level) => {
+  const have = (T.user?.rights ?? {})[cap];
+  return !!have && RANK[have] >= RANK[level];
+};
+
 const showErr = (m) => { const e=$("err"); e.textContent=m; e.classList.toggle("hide", !m); };
 
 async function api(path, body){

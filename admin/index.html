@@ -52,11 +52,23 @@ h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
 .person{border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:10px}
 .person.off{opacity:.55}
 .person.master{border-color:var(--violet);background:rgba(17,17,17,.03)}
-.caps{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.cap{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r-pill);
-  padding:6px 13px;font-size:13px;cursor:pointer;user-select:none;background:var(--bg)}
-.cap input{width:16px;height:16px;flex:none;margin:0}
-.cap.on{border-color:var(--violet);background:rgba(17,17,17,.07);font-weight:700}
+/* One row per right, with how much of it. A dial rather than three switches:
+   the levels contain each other, so only one can be on at a time. */
+.capgrid{display:flex;flex-direction:column;gap:2px;margin-top:12px}
+.caprow{display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:8px 0;border-bottom:1px dashed var(--line)}
+.caprow:last-child{border-bottom:0}
+.capname{font-size:13.5px;min-width:0}
+.levels{display:flex;flex:none;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--bg)}
+.lvl{background:transparent;color:var(--subtle);border:0;border-left:1px solid var(--line);
+  border-radius:0;padding:7px 11px;font-size:12px;font-weight:600;cursor:pointer}
+.lvl:first-child{border-left:0}
+.lvl.on{background:var(--indigo);color:#fff}
+.lvl:focus-visible{outline:2px solid var(--violet);outline-offset:-2px}
+@media (max-width:520px){
+  .caprow{flex-direction:column;align-items:stretch;gap:6px}
+  .levels{align-self:flex-start}
+}
 .f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media (max-width:560px){.f2{grid-template-columns:1fr}}
 .stat{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px dashed #e5e7eb;font-size:14px}
@@ -96,7 +108,7 @@ h2{font-size:16px;margin:0 0 14px;letter-spacing:-.4px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.12";
+const APP_VERSION = "2026-08-16.1";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -144,6 +156,9 @@ const CAP_LABELS = {
   "entities.manage": "Manage companies",
   "board":           "See the daily board",
 };
+const LEVEL_LABELS = { read: "Read", write: "Write", edit: "Edit" };
+let LEVELS = ["read", "write", "edit"];   // replaced by whatever the server sends
+
 const ROLE_HINT = {
   admin:     "Rights are switched on individually below.",
   office:    "Office section only.",
@@ -206,7 +221,8 @@ async function loadPeople(){
         .reduce((m, d) => m.set(d.username, (m.get(d.username) ?? 0) + 1), new Map()));
     } catch { DEVICES = {}; }
 
-    const { staff, capabilities } = await api("/admin/staff");
+    const { staff, capabilities, levels } = await api("/admin/staff");
+    if (Array.isArray(levels) && levels.length) LEVELS = levels;
 
     el.innerHTML = `
       <div class="card">
@@ -293,13 +309,23 @@ function renderPerson(p, capabilities){
     </div>
 
     ${isAdmin ? `
-      <div class="caps">
-        ${capabilities.map((c) => `
-          <label class="cap ${p.permissions.includes(c) ? "on" : ""}">
-            <input type="checkbox" data-cap="${c}" data-for="${p.username}"
-                   ${p.permissions.includes(c) ? "checked" : ""}>
-            ${CAP_LABELS[c] ?? c}
-          </label>`).join("")}
+      <div class="capgrid">
+        ${capabilities.map((c) => {
+          const held = grantLevel(p.permissions, c);   // null when they have none
+          return `<div class="caprow">
+            <div class="capname">${CAP_LABELS[c] ?? c}</div>
+            <div class="levels" data-for="${p.username}" data-cap="${c}">
+              ${[["", "None"], ...LEVELS.map((l) => [l, LEVEL_LABELS[l]])].map(([v, label]) =>
+                `<button type="button" class="lvl ${held === (v || null) ? "on" : ""}"
+                         data-level="${v}">${label}</button>`).join("")}
+            </div>
+          </div>`;
+        }).join("")}
+      </div>
+      <div class="muted" style="margin-top:8px;font-size:12px">
+        <strong>Read</strong> look only · <strong>Write</strong> the everyday work ·
+        <strong>Edit</strong> also undo what has already happened — cancel an order,
+        restore one, change someone's rights.
       </div>
       <div class="row" style="margin-top:12px">
         <button class="sm" data-save="${p.username}">Save rights</button>
@@ -316,16 +342,33 @@ function renderPerson(p, capabilities){
   </div>`;
 }
 
+// The level someone holds for one right, or null. A bare entry with no level is
+// how rights were stored before levels existed and meant unrestricted access,
+// which the server reads as edit — so this has to agree with it.
+function grantLevel(permissions, cap){
+  for (const g of permissions ?? []) {
+    const [c, l] = String(g).split(":");
+    if (c === cap) return LEVELS.includes(l) ? l : "edit";
+  }
+  return null;
+}
+
 function wirePeople(){
-  document.querySelectorAll("[data-cap]").forEach((cb) => cb.onchange = () =>
-    cb.closest(".cap").classList.toggle("on", cb.checked));
+  document.querySelectorAll(".levels .lvl").forEach((b) => b.onclick = () => {
+    const group = b.closest(".levels");
+    group.querySelectorAll(".lvl").forEach((x) => x.classList.remove("on"));
+    b.classList.add("on");
+  });
 
   document.querySelectorAll("[data-save]").forEach((b) => b.onclick = async () => {
     const u = b.dataset.save;
     const state = document.querySelector(`[data-state="${u}"]`);
     b.disabled = true; state.textContent = "Saving…"; showErr(""); showOk("");
     try {
-      const permissions = [...document.querySelectorAll(`[data-for="${u}"]:checked`)].map((i) => i.dataset.cap);
+      const permissions = [...document.querySelectorAll(`.levels[data-for="${u}"]`)]
+        .map((g) => [g.dataset.cap, g.querySelector(".lvl.on")?.dataset.level])
+        .filter(([, level]) => level)
+        .map(([cap, level]) => `${cap}:${level}`);
       await api("/admin/staff/permissions", { username: u, permissions });
       state.textContent = "saved";
       showOk(`${u}: rights updated. They take effect next time ${u} signs in.`);

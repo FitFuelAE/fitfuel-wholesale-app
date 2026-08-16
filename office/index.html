@@ -160,7 +160,7 @@ details.ord .body{padding:0 18px 18px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-15.12";
+const APP_VERSION = "2026-08-16.1";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -175,6 +175,15 @@ const T = {
   get user(){ try { return JSON.parse(localStorage.getItem("ff_wh_office_user")||"null"); } catch { return null; } },
   set user(v){ v ? localStorage.setItem("ff_wh_office_user", JSON.stringify(v)) : localStorage.removeItem("ff_wh_office_user"); },
 };
+// How much of a right the signed-in person holds. The server decides and refuses
+// regardless; this only keeps controls off the screen that would always be
+// refused, because a button that never works is worse than no button.
+const RANK = { read: 1, write: 2, edit: 3 };
+const rightAtLeast = (cap, level) => {
+  const have = (T.user?.rights ?? {})[cap];
+  return !!have && RANK[have] >= RANK[level];
+};
+
 const showErr = (m) => { const e=$("err"); e.textContent=m||""; e.classList.toggle("hide", !m); if(m) window.scrollTo(0,0); };
 const showOk  = (m) => { const e=$("ok");  e.textContent=m||""; e.classList.toggle("hide", !m); };
 const aed = (n) => Number(n || 0).toFixed(2);
@@ -261,7 +270,10 @@ async function boot(){
     $("tabs").classList.add("hide"); $("summary").classList.add("hide"); return;
   }
   $("login").classList.add("hide"); $("out").classList.remove("hide");
-  $("upload").classList.remove("hide"); $("tabs").classList.remove("hide");
+  // Uploading is write; someone with read-only office rights sees the inbox and
+  // the day summary, and no way to put work into it.
+  $("upload").classList.toggle("hide", !rightAtLeast("office", "write"));
+  $("tabs").classList.remove("hide");
   $("who").textContent = `${T.user?.name ?? ""} · v${APP_VERSION}`;
   try { ENTITIES = (await api("/entities")).entities; } catch { ENTITIES = []; }
   window.ENTITIES = ENTITIES;
@@ -373,7 +385,7 @@ function renderOrder(o){
 
     ${needsAssigning ? `
       <div class="row" style="margin-top:14px">
-        <button class="sec sm danger" data-cancel="${o.id}" data-no="${o.order_no}">Cancel this document</button>
+        ${rightAtLeast("office", "edit") ? `<button class="sec sm danger" data-cancel="${o.id}" data-no="${o.order_no}">Cancel this document</button>` : ""}
         <select data-all="${o.id}" style="width:auto;min-width:190px">
           <option value="">Set every line to…</option>
           ${(window.ENTITIES || []).map((e) => `<option value="${e.id}">${e.display_name} · ${e.erp.toUpperCase()}</option>`).join("")}
@@ -382,7 +394,7 @@ function renderOrder(o){
       </div>`
     : `
       <div class="row" style="margin-top:14px">
-        <button class="sec sm danger" data-cancel="${o.id}" data-no="${o.order_no}">Cancel this document</button>
+        ${rightAtLeast("office", "edit") ? `<button class="sec sm danger" data-cancel="${o.id}" data-no="${o.order_no}">Cancel this document</button>` : ""}
         <span class="muted">Uploaded by mistake? This withdraws it — the record is kept.</span>
       </div>
       <label style="margin-top:16px">Invoice numbers from the ERP</label>
@@ -947,11 +959,11 @@ boot();
 <script type="module">
 // Reading the ERP's PDF. pdf.js is vendored (../lib/pdfjs) because the app is
 // served from GitHub Pages and may not fetch anything from another origin.
-import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-15.12";
-import { extractLines } from "../lib/pdf-text.js?v=2026-08-15.12";
-import { parseDocument } from "../lib/parsers.js?v=2026-08-15.12";
+import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-16.1";
+import { extractLines } from "../lib/pdf-text.js?v=2026-08-16.1";
+import { parseDocument } from "../lib/parsers.js?v=2026-08-16.1";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-15.12";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-16.1";
 
 const $$ = (id) => document.getElementById(id);
 const aed2 = (n) => Number(n || 0).toFixed(2);
