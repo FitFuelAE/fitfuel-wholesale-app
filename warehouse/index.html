@@ -80,6 +80,37 @@ details.ord .body{padding:0 16px 16px}
 /* Held by the office. Not an error and not a warning — the work is fine, it
    simply may not leave yet. */
 .p-hold{background:rgba(17,17,17,.10);color:var(--violet);border:1px solid rgba(17,17,17,.25)}
+/* The three ways an order can be waiting. Named rather than colour-coded, since
+   the difference is about what may happen to it, not how urgent it is. */
+.group{margin-bottom:22px}
+.group-h{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  flex-wrap:wrap;margin:0 0 10px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+.group-h .gt{font-size:14px;font-weight:700;letter-spacing:-.2px}
+.group-h .gn{display:inline-block;margin-left:8px;font-size:11px;font-weight:700;
+  padding:2px 8px;border-radius:var(--r-pill);background:#f3f4f6;color:var(--subtle)}
+
+/* A month at a glance. Deliberately plain: the only thing being encoded is how
+   much work lands on each day, so a number is enough. */
+.cgrid-h{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:14px 0 4px;
+  font-size:11px;font-weight:700;color:var(--subtle);text-align:center}
+.cgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cday{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 4px;
+  min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+  gap:3px;cursor:pointer;color:var(--ink-deep);font-family:inherit}
+.cday.empty{background:transparent;border-color:transparent;cursor:default;min-height:0}
+.cday .dn{font-size:13px;font-weight:600;color:var(--subtle)}
+.cday.has .dn{color:var(--ink-deep)}
+.cday .cn{font-size:12px;font-weight:800;line-height:1.2;text-align:center}
+.cday .ch{display:block;font-size:9px;font-weight:700;color:#92400e}
+.cday.today{border-color:var(--violet);border-width:2px}
+.cday.today .dn{color:var(--violet);font-weight:800}
+.cday.on{background:var(--indigo);border-color:var(--indigo);color:#fff}
+.cday.on .dn,.cday.on .cn{color:#fff}
+.cday.on .ch{color:#fde68a}
+.dayrow{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
+  padding:11px 0;border-bottom:1px dashed var(--line)}
+.dayrow:last-child{border-bottom:0}
+@media (max-width:420px){ .cday{min-height:50px;padding:6px 2px} .cday .cn{font-size:11px} }
 .locked{margin-top:12px;padding:11px 13px;border-radius:var(--r);font-size:13px;
   background:rgba(17,17,17,.05);border:1px solid rgba(17,17,17,.18);color:var(--ink-deep)}
 </style>
@@ -108,18 +139,20 @@ details.ord .body{padding:0 16px 16px}
     <button class="tab on" data-tab="queue">Orders</button>
     <button class="tab" data-tab="money">Money <span id="inboxBadge" class="badge hide">0</span></button>
     <button class="tab" data-tab="returns">Returns <span id="retBadge" class="badge hide">0</span></button>
+    <button class="tab" data-tab="calendar">Calendar</button>
     <button class="tab" data-tab="summary">Day summary</button>
   </nav>
 
   <section id="queue" class="hide"></section>
   <section id="money" class="hide"></section>
   <section id="returns" class="hide"></section>
+  <section id="calendar" class="hide"></section>
   <section id="summary" class="hide"></section>
 </main>
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-18.2";
+const APP_VERSION = "2026-08-18.3";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -196,9 +229,11 @@ document.querySelectorAll(".tab").forEach((b) => b.onclick = async () => {
   $("queue").classList.toggle("hide", tab !== "queue");
   $("money").classList.toggle("hide", tab !== "money");
   $("returns").classList.toggle("hide", tab !== "returns");
+  $("calendar").classList.toggle("hide", tab !== "calendar");
   $("summary").classList.toggle("hide", tab !== "summary");
   if (tab === "money") await loadMoney();
   else if (tab === "returns") await loadReturns();
+  else if (tab === "calendar") await loadCalendar();
   else if (tab === "summary") await loadSummary();
   else await loadQueue();
 });
@@ -216,6 +251,113 @@ async function refreshBadge(){
     b.textContent = returns.length;
     b.classList.toggle("hide", returns.length === 0);
   } catch { /* badge is cosmetic */ }
+}
+
+
+// ---- calendar --------------------------------------------------------------
+// What is due out, month by month. The queue answers "what do I do now"; this
+// answers "what is coming", which is the question you ask on a Thursday when
+// someone wants to book a delivery for next week.
+let calMonth = null;    // "YYYY-MM", null until first load
+let calDay = null;      // the day being looked at
+
+async function loadCalendar(){
+  const el = $("calendar"); el.classList.remove("hide");
+  el.innerHTML = `<div class="muted">Loading…</div>`;
+  let data;
+  // Send no month at all on first load rather than an empty one — an empty
+  // parameter is present, so the server's default never gets a chance.
+  try { data = await api(`/warehouse/calendar${calMonth ? `?month=${calMonth}` : ""}`); }
+  catch (e) { el.innerHTML = ""; return showErr(e.message); }
+
+  calMonth = data.month;
+  TODAY = data.today ?? TODAY;
+  const [y, m] = calMonth.split("-").map(Number);
+  const first = new Date(Date.UTC(y, m - 1, 1));
+  const daysIn = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  // Weeks start Monday: the working week here runs Mon–Sat.
+  const lead = (first.getUTCDay() + 6) % 7;
+  const title = first.toLocaleDateString([], { month: "long", year: "numeric", timeZone: "UTC" });
+
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push(`<div class="cday empty"></div>`);
+  for (let d = 1; d <= daysIn; d++) {
+    const iso = `${calMonth}-${String(d).padStart(2, "0")}`;
+    const n = data.days[iso];
+    cells.push(`<button type="button" class="cday${iso === TODAY ? " today" : ""}${
+      iso === calDay ? " on" : ""}${n ? " has" : ""}" data-day="${iso}">
+      <span class="dn">${d}</span>
+      ${n ? `<span class="cn">${n.open || n.total}${n.held ? ` <span class="ch">${n.held} held</span>` : ""}</span>` : ""}
+    </button>`);
+  }
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <button class="sec sm" id="calPrev">← Previous</button>
+        <h2 style="margin:0">${title}</h2>
+        <button class="sec sm" id="calNext">Next →</button>
+      </div>
+      <div class="cgrid-h">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((d) => `<div>${d}</div>`).join("")}</div>
+      <div class="cgrid">${cells.join("")}</div>
+      <div class="muted" style="margin-top:10px;font-size:12px">
+        The number is how many orders are still open that day. Tap a day to see them.
+      </div>
+    </div>
+    <div id="calList"></div>`;
+
+  $("calPrev").onclick = () => { calMonth = shiftMonth(calMonth, -1); calDay = null; loadCalendar(); };
+  $("calNext").onclick = () => { calMonth = shiftMonth(calMonth,  1); calDay = null; loadCalendar(); };
+  el.querySelectorAll("[data-day]").forEach((b) => b.onclick = () => {
+    calDay = b.dataset.day;
+    el.querySelectorAll(".cday").forEach((x) => x.classList.remove("on"));
+    b.classList.add("on");
+    loadCalendarDay(calDay);
+  });
+  if (calDay) await loadCalendarDay(calDay);
+}
+
+const shiftMonth = (ym, by) => {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + by, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+};
+
+async function loadCalendarDay(date){
+  const box = $("calList");
+  box.innerHTML = `<div class="muted">Loading…</div>`;
+  let data;
+  try { data = await api(`/warehouse/day?date=${date}`); }
+  catch (e) { box.innerHTML = ""; return showErr(e.message); }
+
+  const day = new Date(date + "T00:00:00+04:00")
+    .toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
+  if (!data.orders.length) {
+    box.innerHTML = `<div class="card"><h2>${day}</h2>
+      <div class="muted">Nothing due out.</div></div>`;
+    return;
+  }
+
+  box.innerHTML = `<div class="card"><h2>${day} — ${data.orders.length} order${
+    data.orders.length === 1 ? "" : "s"}</h2>` +
+    data.orders.map((o) => {
+      const drop = (o.deliveries ?? [])[0];
+      const value = (o.invoices ?? []).reduce((t, v) => t + Number(v.amount || 0), 0);
+      return `<div class="dayrow">
+        <div style="min-width:0">
+          <div style="font-weight:700">${o.order_no} · ${o.customers?.name ?? "—"}</div>
+          <div class="muted">${(o.order_lines ?? []).length} lines${
+            value ? ` · AED ${aed(value)}` : ""}${o.customers?.area ? ` · ${o.customers.area}` : ""}${
+            drop?.driver_username ? ` · ${drop.driver_username}` : ""}</div>
+          ${o.dispatch_plan === "hold" ? `<div class="muted" style="color:#92400e">
+            On hold${o.hold_note ? ` — ${o.hold_note}` : ""}</div>` : ""}
+        </div>
+        <span class="row" style="flex:none;gap:6px">
+          ${o.dispatch_plan === "hold" ? `<span class="pill p-hold">on hold</span>` : ""}
+          <span class="pill ${o.status === "delivered" ? "p-ok" : "p-acc"}">${o.status.replace(/_/g," ")}</span>
+        </span>
+      </div>`;
+    }).join("") + `</div>`;
 }
 
 // ---- goods coming back on the van -----------------------------------------
@@ -411,7 +553,15 @@ async function loadQueue(){
       return;
     }
 
-    el.innerHTML = `<h2>${orders.length} order${orders.length>1?"s":""} in the queue</h2>` + orders.map((o) => `
+    // Three groups, in the order the day is worked: what goes out now, what is
+    // booked for a date, and what the office has locked. Mixing them into one
+    // list meant a held order and tomorrow's run looked like the same job.
+    const GROUPS = [
+      { plan: "next_day",  title: "Next / same day", hint: "goes out on the next run" },
+      { plan: "scheduled", title: "Scheduled",       hint: "booked for a date the customer asked for" },
+      { plan: "hold",      title: "On hold",         hint: "the office has to release these before a driver can take them" },
+    ];
+    const orderCard = (o) => `
       <details class="ord" data-order="${o.id}">
         <summary>
           <span class="chev">▶</span>
@@ -471,7 +621,20 @@ async function loadQueue(){
             It cannot go to a driver until the office releases the hold.
           </div>` : ""}
         </div>
-      </details>`).join("");
+      </details>`;
+
+    el.innerHTML = `<h2>${orders.length} order${orders.length>1?"s":""} in the queue</h2>` +
+      GROUPS.map((g) => {
+        const mine = orders.filter((o) => (o.dispatch_plan ?? "next_day") === g.plan);
+        if (!mine.length) return "";
+        return `<div class="group">
+          <div class="group-h">
+            <span class="gt">${g.title}<span class="gn">${mine.length}</span></span>
+            <span class="muted">${g.hint}</span>
+          </div>
+          ${mine.map(orderCard).join("")}
+        </div>`;
+      }).join("");
 
     el.querySelectorAll("[data-doc]").forEach((b) => b.onclick = async () => {
       b.disabled = true; const was = b.textContent; b.textContent = "Fetching…"; showErr("");
