@@ -88,6 +88,11 @@ details.ord .body{padding:0 16px 16px}
 .group-h .gt{font-size:14px;font-weight:700;letter-spacing:-.2px}
 .group-h .gn{display:inline-block;margin-left:8px;font-size:11px;font-weight:700;
   padding:2px 8px;border-radius:var(--r-pill);background:#f3f4f6;color:var(--subtle)}
+.area{margin-bottom:12px}
+.area-h{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.05em;color:var(--subtle);margin:0 0 7px 2px}
+.area-h .an{font-size:11px;font-weight:700;padding:1px 7px;border-radius:var(--r-pill);
+  background:#f3f4f6;color:var(--subtle);text-transform:none;letter-spacing:0}
 
 /* A month at a glance. Deliberately plain: the only thing being encoded is how
    much work lands on each day, so a number is enough. */
@@ -152,7 +157,7 @@ details.ord .body{padding:0 16px 16px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-18.3";
+const APP_VERSION = "2026-08-18.4";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -556,6 +561,9 @@ async function loadQueue(){
     // Three groups, in the order the day is worked: what goes out now, what is
     // booked for a date, and what the office has locked. Mixing them into one
     // list meant a held order and tomorrow's run looked like the same job.
+    // The delivery app's order, so a zone reads the same in both.
+    const EMIRATE_ORDER = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman",
+                           "Umm Al Quwain", "Ras Al Khaimah", "Fujairah"];
     const GROUPS = [
       { plan: "next_day",  title: "Next / same day", hint: "goes out on the next run" },
       { plan: "scheduled", title: "Scheduled",       hint: "booked for a date the customer asked for" },
@@ -627,12 +635,29 @@ async function loadQueue(){
       GROUPS.map((g) => {
         const mine = orders.filter((o) => (o.dispatch_plan ?? "next_day") === g.plan);
         if (!mine.length) return "";
+        // Within a group, by emirate — a driver takes a zone, not a scattering.
+        // "Area not known" is last and named rather than hidden, because it is a
+        // list of customers whose documents never said where they are.
+        const byArea = new Map();
+        for (const o of mine) {
+          const a = o.customers?.area || "Area not known";
+          if (!byArea.has(a)) byArea.set(a, []);
+          byArea.get(a).push(o);
+        }
+        const areas = [...byArea.keys()].sort((a, b) => {
+          const ia = EMIRATE_ORDER.indexOf(a), ib = EMIRATE_ORDER.indexOf(b);
+          return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+        });
         return `<div class="group">
           <div class="group-h">
             <span class="gt">${g.title}<span class="gn">${mine.length}</span></span>
             <span class="muted">${g.hint}</span>
           </div>
-          ${mine.map(orderCard).join("")}
+          ${areas.map((a) => `
+            <div class="area">
+              <div class="area-h">${a}<span class="an">${byArea.get(a).length}</span></div>
+              ${byArea.get(a).map(orderCard).join("")}
+            </div>`).join("")}
         </div>`;
       }).join("");
 
