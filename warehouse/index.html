@@ -35,6 +35,7 @@ button.sec{background:transparent;color:var(--ink-deep);border:1px solid var(--l
 .p-acc{background:rgba(17,17,17,.10);color:var(--violet)}
 .p-ok{background:rgba(22,163,74,.12);color:var(--ok)}
 .p-warn{background:rgba(217,119,6,.16);color:#92400e}
+.p-neu{background:#f3f4f6;color:var(--subtle);border:1px solid var(--line)}
 .muted{color:var(--subtle);font-size:13px}
 .mono{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
 .err{background:rgba(220,38,38,.10);color:var(--bad);padding:10px 12px;border-radius:var(--r);
@@ -76,6 +77,11 @@ details.ord .body{padding:0 16px 16px}
 .docrow .no{font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:700}
 .docrow.gone{opacity:.55}
 .p-temp{background:rgba(217,119,6,.16);color:#92400e}
+/* Held by the office. Not an error and not a warning — the work is fine, it
+   simply may not leave yet. */
+.p-hold{background:rgba(17,17,17,.10);color:var(--violet);border:1px solid rgba(17,17,17,.25)}
+.locked{margin-top:12px;padding:11px 13px;border-radius:var(--r);font-size:13px;
+  background:rgba(17,17,17,.05);border:1px solid rgba(17,17,17,.18);color:var(--ink-deep)}
 </style>
 </head>
 <body>
@@ -113,7 +119,7 @@ details.ord .body{padding:0 16px 16px}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-16.4";
+const APP_VERSION = "2026-08-18.2";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -294,6 +300,21 @@ const TERMS = {
 };
 const termLabel = (t) => t ? `· ${TERMS[t] ?? t}` : "";
 
+// When it is due out. Orders the office put on hold never reach this app at all,
+// so what shows here is either tomorrow's run or a date the customer asked for.
+// Today comes from the server, so the label agrees with the queue's own ordering
+// rather than with the clock on whichever device is looking.
+let TODAY = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
+function dueLabel(o){
+  if (!o?.dispatch_date) return "";
+  const d = o.dispatch_date;
+  const day = new Date(d + "T00:00:00+04:00")
+    .toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+  if (d < TODAY)   return `<span class="pill p-warn">overdue · ${day}</span>`;
+  if (d === TODAY) return `<span class="pill p-warn">today</span>`;
+  return `<span class="pill p-neu">${day}</span>`;
+}
+
 // ---- money ----------------------------------------------------------------
 // Two halves: what's been handed TO me and needs counting, and what I'm now
 // holding and must pass on to the office. Both sides confirm, so cash is never
@@ -379,9 +400,10 @@ async function loadQueue(){
   const el = $("queue"); el.classList.remove("hide");
   el.innerHTML = `<p class="muted">Loading…</p>`;
   try {
-    const [{ orders }, { staff: drivers }] = await Promise.all([
+    const [{ orders, today }, { staff: drivers }] = await Promise.all([
       api("/warehouse/queue"), api("/staff?role=driver"),
     ]);
+    if (today) TODAY = today;
     const driverOptions = drivers.map((d) => `<option value="${d.username}">${d.name}</option>`).join("");
     if (!orders.length){
       el.innerHTML = `<div class="card"><p class="muted">Nothing waiting. All caught up.</p></div>`;
@@ -397,7 +419,9 @@ async function loadQueue(){
             <span class="t">${o.order_no} · ${o.customers?.name ?? "—"}</span>
             <span class="s">${(o.order_lines ?? []).length} line${(o.order_lines ?? []).length === 1 ? "" : "s"}${o.customers?.area ? ` · ${o.customers.area}` : ""} ${termLabel(o.payment_term)}</span>
           </span>
-          <span class="pill p-acc">${o.status}</span>
+          <span class="row" style="flex:none;gap:6px">${
+            o.dispatch_plan === "hold" ? `<span class="pill p-hold">on hold</span>` : dueLabel(o)
+          }<span class="pill p-acc">${o.status}</span></span>
         </summary>
         <div class="body">
 
@@ -433,12 +457,19 @@ async function loadQueue(){
 
         <div class="row" style="margin-top:14px">
           <button data-confirm="${o.id}">Confirm availability</button>
-          <select data-driver="${o.id}" style="width:auto;min-width:170px">
-            <option value="">Assign driver…</option>
-            ${driverOptions}
-          </select>
-          <button class="sec" data-assign="${o.id}">Assign &amp; stage</button>
+          ${o.dispatch_plan === "hold" ? "" : `
+            <select data-driver="${o.id}" style="width:auto;min-width:170px">
+              <option value="">Assign driver…</option>
+              ${driverOptions}
+            </select>
+            <button class="sec" data-assign="${o.id}">Assign &amp; stage</button>`}
         </div>
+        ${o.dispatch_plan === "hold" ? `
+          <div class="locked">
+            <strong>On hold by the office.</strong> Check it and pick it as normal — if
+            anything is short, confirm availability and it goes back to them the usual way.
+            It cannot go to a driver until the office releases the hold.
+          </div>` : ""}
         </div>
       </details>`).join("");
 

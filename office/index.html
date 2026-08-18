@@ -99,6 +99,17 @@ details.ord .body{padding:0 18px 18px}
 .doc.needs{border-color:var(--warn);background:rgba(217,119,6,.05)}
 select.asking{border-color:var(--warn);background:rgba(217,119,6,.06)}
 .askfor{color:#92400e;font-weight:700;font-size:11px;text-transform:none;letter-spacing:0}
+/* When it goes out. Three options, one answer — a tick rather than a dropdown,
+   because the office is choosing between three known things, not searching. */
+.plans{display:flex;flex-wrap:wrap;gap:8px}
+.planopt{display:flex;align-items:center;gap:8px;border:1px solid var(--line);
+  border-radius:var(--r);padding:10px 14px;font-size:14px;font-weight:600;
+  cursor:pointer;user-select:none;background:var(--bg);margin:0;color:var(--ink-deep)}
+.planopt input{width:17px;height:17px;flex:none;margin:0;accent-color:#111}
+.planopt.on{border-color:var(--violet);background:rgba(17,17,17,.06)}
+.planwhen{margin-top:8px}
+.planwhen input{max-width:260px}
+.dispatch{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin-bottom:12px}
 .doc.done{border-color:var(--ok);background:rgba(22,163,74,.05)}
 .doc .hd{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .doc .fn{font-size:12px;color:var(--subtle);font-family:ui-monospace,Menlo,monospace}
@@ -168,7 +179,7 @@ select.asking{border-color:var(--warn);background:rgba(217,119,6,.06)}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-16.4";
+const APP_VERSION = "2026-08-18.2";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -209,6 +220,21 @@ window.TERMS = {
   credit:   { label: "Credit" },
 };
 const termLabel = (t) => t ? `· ${window.TERMS[t]?.label ?? t}` : "";
+
+// When it goes out. Unlike the payment term this one has a default, because the
+// cost of guessing wrong is a phone call rather than money collected in error.
+window.PLANS = {
+  next_day:  { label: "Next day" },
+  scheduled: { label: "Scheduled" },
+  hold:      { label: "On hold" },
+};
+const dubaiToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
+function planLabel(o){
+  if (!o?.dispatch_plan || o.dispatch_plan === "next_day") return "";
+  if (o.dispatch_plan === "hold") return `· <strong>On hold</strong>`;
+  return `· ${new Date(o.dispatch_date + "T00:00:00+04:00")
+    .toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })}`;
+}
 
 async function api(path, body){
   const res = await fetch(API + path, {
@@ -336,12 +362,35 @@ function renderOrder(o){
         <span class="s">${lines.length} line${lines.length===1?"":"s"}${total ? ` · AED ${aed(total)}` : ""}
           ${o.source_erp ? `· ${o.source_erp.toUpperCase()}` : ""}
           ${termLabel(o.payment_term)}
+          ${planLabel(o)}
           ${o.lpo_reference ? `· LPO ${o.lpo_reference}` : ""}</span>
       </span>
       <span class="pill ${o.hold_reason ? "needs" : needsAssigning ? "p-acc" : "p-warn"}">${
         o.hold_reason ? "Back from warehouse" : needsAssigning ? "Confirm company" : "Awaiting invoice no."}</span>
     </summary>
     <div class="body">
+
+    <div class="dispatch">
+      <label>When does it go out?</label>
+      <div class="row">
+        <div class="plans" data-odispatch="${o.id}">
+          ${Object.entries(window.PLANS).map(([k, v]) => `
+            <label class="planopt ${(o.dispatch_plan ?? "next_day") === k ? "on" : ""}">
+              <input type="radio" name="odp-${o.id}" value="${k}"
+                     ${(o.dispatch_plan ?? "next_day") === k ? "checked" : ""}>
+              ${v.label}
+            </label>`).join("")}
+        </div>
+        <input type="date" class="odate ${o.dispatch_plan === "scheduled" ? "" : "hide"}"
+               data-odate="${o.id}" min="${dubaiToday()}" value="${o.dispatch_date ?? ""}"
+               style="width:auto">
+        <button class="sec sm" data-savedispatch="${o.id}">Update</button>
+      </div>
+      ${o.dispatch_plan === "hold" ? `<div class="muted" style="margin-top:8px">
+        <strong>On hold</strong> — the warehouse cannot see this yet${
+          o.hold_note ? `: ${o.hold_note}` : ""}. Choose Next day or Scheduled to release it.
+      </div>` : ""}
+    </div>
 
     ${o.hold_reason ? `
       <div class="held">
@@ -485,6 +534,30 @@ function revisionHistory(v){
 }
 
 function wireOrder(o){
+  // When it goes out, changeable after the fact — otherwise "On hold" would be
+  // a one-way door, only undoable by uploading the document again.
+  const dgroup = document.querySelector(`[data-odispatch="${o.id}"]`);
+  const ddate  = document.querySelector(`[data-odate="${o.id}"]`);
+  dgroup?.querySelectorAll("input[type=radio]").forEach((r) => r.onchange = () => {
+    dgroup.querySelectorAll(".planopt").forEach((x) => x.classList.remove("on"));
+    r.closest(".planopt").classList.add("on");
+    ddate?.classList.toggle("hide", r.value !== "scheduled");
+  });
+  const dbtn = document.querySelector(`[data-savedispatch="${o.id}"]`);
+  if (dbtn) dbtn.onclick = async () => {
+    const plan = dgroup?.querySelector("input[type=radio]:checked")?.value ?? "next_day";
+    if (plan === "scheduled" && !ddate?.value) return showErr("Pick the date first.");
+    dbtn.disabled = true; showErr(""); showOk("");
+    try {
+      const r = await api("/office/dispatch", {
+        orderId: o.id, dispatchPlan: plan, dispatchDate: ddate?.value || undefined,
+      });
+      showOk(`${o.order_no}: ${window.PLANS[plan].label}${r.date ? ` — ${r.date}` : ""}` +
+             (r.released ? ". The warehouse has been told." : "."));
+      await loadInbox();
+    } catch (e) { dbtn.disabled = false; showErr(e.message); }
+  };
+
   const card = document.querySelector(`[data-order="${o.id}"]`);
   if (!card) return;
 
@@ -967,16 +1040,18 @@ boot();
 <script type="module">
 // Reading the ERP's PDF. pdf.js is vendored (../lib/pdfjs) because the app is
 // served from GitHub Pages and may not fetch anything from another origin.
-import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-16.4";
-import { extractLines } from "../lib/pdf-text.js?v=2026-08-16.4";
-import { parseDocument } from "../lib/parsers.js?v=2026-08-16.4";
+import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-18.2";
+import { extractLines } from "../lib/pdf-text.js?v=2026-08-18.2";
+import { parseDocument } from "../lib/parsers.js?v=2026-08-18.2";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-16.4";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-18.2";
 
 const $$ = (id) => document.getElementById(id);
 const aed2 = (n) => Number(n || 0).toFixed(2);
 let pending = [];   // one entry per chosen file
 const TERMS = window.TERMS;
+const PLANS = window.PLANS;
+const dubaiToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
 
 // Focus prints a cash sale with no VAT, no seller TRN and no company name, so
 // there is nothing on the page to match on. Every other company charges VAT, so
@@ -1064,6 +1139,26 @@ function renderBatch() {
         Travels with the order to the warehouse and the driver. Choose
         <strong>Credit</strong> or <strong>Bank transfer</strong> and the driver is told to collect nothing.
       </div>
+
+      <label>When does it go out?</label>
+      <div class="plans" data-plan-for="${i}">
+        ${Object.entries(PLANS).map(([k, v]) => `
+          <label class="planopt ${(d.plan ?? "next_day") === k ? "on" : ""}">
+            <input type="radio" name="plan-${i}" value="${k}"
+                   ${(d.plan ?? "next_day") === k ? "checked" : ""}>
+            ${v.label}
+          </label>`).join("")}
+      </div>
+      <div class="planwhen ${(d.plan ?? "next_day") === "scheduled" ? "" : "hide"}" data-when="${i}">
+        <input type="date" data-date="${i}" min="${dubaiToday()}" value="${d.planDate ?? ""}">
+      </div>
+      <div class="planwhen ${d.plan === "hold" ? "" : "hide"}" data-holdnote="${i}">
+        <input data-note="${i}" placeholder="Why is it on hold? (optional)" value="${d.holdNote ?? ""}">
+      </div>
+      <div class="muted" style="margin:6px 0 10px;font-size:12px">
+        <strong>On hold</strong> keeps it away from the warehouse entirely — not in their
+        queue and no alert — until you release it from the inbox.
+      </div>
       ${needsCompany ? `<label>This document names no company — which one issued it?${
             d.needs === "company" ? ` <span class="askfor">needed before saving</span>` : ""}</label>
         <select data-co="${i}" class="${d.needs === "company" ? "asking" : ""}">
@@ -1097,6 +1192,25 @@ function renderBatch() {
       el.querySelectorAll(".askfor").forEach((n) => n.remove());
     }
   };
+  el.querySelectorAll("[data-plan-for]").forEach((group) => {
+    const i = Number(group.dataset.planFor);
+    group.querySelectorAll("input[type=radio]").forEach((r) => r.onchange = () => {
+      pending[i].plan = r.value;
+      group.querySelectorAll(".planopt").forEach((o) => o.classList.remove("on"));
+      r.closest(".planopt").classList.add("on");
+      el.querySelector(`[data-when="${i}"]`)?.classList.toggle("hide", r.value !== "scheduled");
+      el.querySelector(`[data-holdnote="${i}"]`)?.classList.toggle("hide", r.value !== "hold");
+      answered(pending[i]);
+    });
+  });
+  el.querySelectorAll("[data-date]").forEach((inp) => inp.onchange = () => {
+    pending[Number(inp.dataset.date)].planDate = inp.value || null;
+    answered(pending[Number(inp.dataset.date)]);
+  });
+  el.querySelectorAll("[data-note]").forEach((inp) => inp.oninput = () => {
+    pending[Number(inp.dataset.note)].holdNote = inp.value.trim() || null;
+  });
+
   el.querySelectorAll("[data-pt]").forEach((sel) => {
     sel.onchange = () => {
       const d = pending[Number(sel.dataset.pt)];
@@ -1120,6 +1234,7 @@ function renderBatch() {
 // What still has to be answered before a document can be saved, or null.
 function unanswered(d) {
   if (!d.term) return "term";
+  if (d.plan === "scheduled" && !d.planDate) return "date";
   if (!d.doc.sellerTrn && !d.entityId && !focusCashEntity(d.doc)) return "company";
   return null;
 }
@@ -1140,8 +1255,10 @@ async function saveAll() {
     renderBatch();
     const first = missing[0];
     window.ffShowErr?.(missing.length === 1
-      ? `${first.file} — ${first.needs === "term"
-          ? "choose how this customer pays" : "choose which company issued it"} before saving.`
+      ? `${first.file} — ${
+          first.needs === "term" ? "choose how this customer pays"
+          : first.needs === "date" ? "pick the date it is scheduled for"
+          : "choose which company issued it"} before saving.`
       : `${missing.length} documents still need an answer — see the highlighted ones below.`);
     document.querySelector(".doc.needs")?.scrollIntoView({ block: "center", behavior: "smooth" });
     return;
@@ -1156,10 +1273,13 @@ async function saveAll() {
     try {
       const r = await window.ffApi("/office/ingest", {
         doc: d.doc, billingEntityId: d.entityId || undefined, paymentTerm: d.term,
+        dispatchPlan: d.plan ?? "next_day", dispatchDate: d.planDate ?? undefined,
+        holdNote: d.holdNote ?? undefined,
         pdfBase64: d.base64, contentType: "application/pdf",
       });
       d.saved = true;
       d.savedNote = `${r.customer} — ${r.lines} lines · ${TERMS[d.term]?.label ?? d.term}` +
+        ` · ${PLANS[d.plan ?? "next_day"].label}${d.plan === "scheduled" ? ` ${d.planDate}` : ""}` +
         (r.documentDiscarded ? " · source file not stored for this company" : "") +
         (r.resolvedHold ? " · amendment accepted" : "");
       saved++;
