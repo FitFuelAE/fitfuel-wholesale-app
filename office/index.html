@@ -179,7 +179,7 @@ select.asking{border-color:var(--warn);background:rgba(217,119,6,.06)}
 
 <script>
 const API = "https://sihvyglufmftrpwogbeq.supabase.co/functions/v1/api";
-const APP_VERSION = "2026-08-18.4";
+const APP_VERSION = "2026-08-22.1";
 
 const $ = (id) => document.getElementById(id);
 function sessionExpired(){
@@ -1040,11 +1040,11 @@ boot();
 <script type="module">
 // Reading the ERP's PDF. pdf.js is vendored (../lib/pdfjs) because the app is
 // served from GitHub Pages and may not fetch anything from another origin.
-import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-18.4";
-import { extractLines } from "../lib/pdf-text.js?v=2026-08-18.4";
-import { parseDocument } from "../lib/parsers.js?v=2026-08-18.4";
+import * as pdfjsLib from "../lib/pdfjs/pdf.min.mjs?v=2026-08-22.1";
+import { extractLines } from "../lib/pdf-text.js?v=2026-08-22.1";
+import { parseDocument } from "../lib/parsers.js?v=2026-08-22.1";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-18.4";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "../lib/pdfjs/pdf.worker.min.mjs?v=2026-08-22.1";
 
 const $$ = (id) => document.getElementById(id);
 const aed2 = (n) => Number(n || 0).toFixed(2);
